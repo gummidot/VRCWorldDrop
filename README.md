@@ -10,7 +10,10 @@ Add your custom object to the prefab, set the menu path, and upload. Copy-paste 
 
 ## Requirements
 
-- VRChat SDK 3.7.0 or later (**IMPORTANT!!** if you haven't updated your project since August 16, 2024)
+- VRChat SDK 3.7.0 or later (**IMPORTANT!!** check VCC if you haven't updated your project since August 16, 2024)
+
+  ![VRChat SDK 3.7.0](Doc/vrcsdk.png)
+
 - [VRCFury](https://vrcfury.com/)
 
 ## Prefabs
