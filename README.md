@@ -1,12 +1,10 @@
 # VRCWorldDrop
 
-**Simple world droppable object for avatars** with toggle menu. Drag-n-drop installation via VRCFury prefab.
+**Simple world drop toggle for avatars**. Drag-n-drop installation with VRCFury. Quest compatible!
 
-Add your custom object to the prefab, set the menu path, and upload. Copy-paste the prefab onto other avatars to reuse!
+Add your custom object to the prefab, set the menu path, and upload. Copy-paste onto other avatars to reuse!
 
-Quest compatible using VRC Constraints.
-
-[Download the latest version]()
+[**Download the latest version**](https://github.com/gummidot/VRCWorldDrop/releases/tag/v1.0.0)
 
 ![Demo gif](Doc/VRCWorldDrop_Demo.gif)
 
@@ -17,10 +15,10 @@ Quest compatible using VRC Constraints.
 
 ## Prefabs
 
-Each prefab comes with two menu toggles:
+Prefabs come with two menu toggles:
 
-- **Show** will show or hide the object (hidden by default)
-- **Drop** will drop the object or pick it back up
+- **Show** shows or hides the object (hidden by default)
+- **Drop** drops the object or picks it back up
 
 ![Toggle menu](Doc/menu_toggle.png)
 
@@ -35,7 +33,7 @@ You can change where the object drops from by choosing the right prefab:
 
 ### Avatar Scaling
 
-The default prefabs do not scale with your avatar, and always remain the same size. If you want objects to scale with your avatar when adjusting avatar height in-game, use the **Scaled** prefabs.
+The default prefabs do not scale with your avatar. If you want objects to scale when adjusting avatar height in-game, use the **Scaled** prefabs.
 
 ### Performance Stats
 
@@ -64,10 +62,10 @@ The default prefabs do not scale with your avatar, and always remain the same si
 
 ## Limitations
 
-VRCWorldDrop is **not synced**, so new players will see your dropped objects at a different location when they join. You will need to re-drop your objects.
+VRCWorldDrop is **not synced**, so you will need to re-drop your objects when new players join. Otherwise they'll see it at a different location.
 
 See [Custom-Object-Sync](https://github.com/VRLabs/Custom-Object-Sync) or [WorldSync](https://github.com/JuzoVR/WorldSync) for synced world drops.
 
 ## Acknowledgments
 
-- Thanks to [VRLabs World Constraint](https://github.com/VRLabs/World-Constraint) for most of the inspiration!
+Thanks to [VRLabs World Constraint](https://github.com/VRLabs/World-Constraint), which this is largely based on!
