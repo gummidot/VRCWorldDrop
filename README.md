@@ -57,6 +57,7 @@ The default prefabs do not scale with your avatar. If you want objects to scale 
 
 6. Rename the prefab to match your object for better organization.
 7. If you want to hide the object in your Scene (or hide it for users that turn off avatar animations), disable the `Container` game object.
+8. Set the object's lighting **Anchor Override** to itself so it lights with itself and not your avatar.
 
 ## Modifying the Prefab
 
