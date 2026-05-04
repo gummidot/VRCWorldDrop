@@ -1,0 +1,21 @@
+{
+  "name": "com.gummidot.vrc-world-drop",
+  "displayName": "VRCWorldDrop",
+  "version": "1.0.0",
+  "unity": "2022.3",
+  "description": "Simple world drop toggle for avatars. Drag-n-drop installation with VRCFury. Quest compatible!",
+  "author": {
+    "name": "gummidot",
+    "url": "https://github.com/gummidot"
+  },
+  "license": "MIT",
+  "keywords": [
+    "vrchat",
+    "avatar",
+    "world-drop",
+    "vrcfury"
+  ],
+  "legacyFolders": {
+    "Assets\\VRCWorldDrop": ""
+  }
+}

@@ -4,7 +4,7 @@
 
 Add your custom object to the prefab, set the menu path, and upload. Copy-paste onto other avatars to reuse!
 
-[**Download the latest version**](https://github.com/gummidot/VRCWorldDrop/releases/tag/v1.0.0)
+[**Add to VCC**](https://gummidot.github.io/vpm-listing/) | [**.unitypackage**](https://github.com/gummidot/VRCWorldDrop/releases/latest)
 
 ![Demo gif](Doc/VRCWorldDrop_Demo.gif)
 
@@ -45,9 +45,19 @@ The default prefabs do not scale with your avatar. If you want objects to scale 
 
 ## Installation
 
+### Import the package
+
+**VCC (recommended):** Click [**Add to VCC**](https://gummidot.github.io/vpm-listing/) to add the listing, then install **VRCWorldDrop** from the package list.
+
+**Unity package:** Download the `.unitypackage` from the [releases page](https://github.com/gummidot/VRCWorldDrop/releases/latest) and import it.
+
+### Set up
+
 <video src="https://github.com/user-attachments/assets/1e3bbb1e-d48d-4b4c-8b7a-936eb438f558"></video>
 
-1. Import the Unity package, find the `Assets/VRCWorldDrop/Prefabs` folder and drag one of the prefabs onto your avatar.
+1. Find the `Prefabs` folder and drag one of the prefabs onto your avatar.
+   - VCC: `Packages/VRCWorldDrop/Prefabs`
+   - Unity package: `Assets/VRCWorldDrop/Prefabs`
 2. Right click the prefab and select **Prefab > Unpack Completely**.
 3. Expand the prefab and replace the default `Cube` with your object.
 4. Move the `Reset Target` to where you want to drop the object from, e.g. on the ground or from your hand.

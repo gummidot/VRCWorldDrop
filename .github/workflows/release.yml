@@ -1,0 +1,56 @@
+name: Build Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  packageName: com.gummidot.vrc-world-drop
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        run: |
+          version=$(jq -r '.version' package.json)
+          echo "version=$version" >> $GITHUB_OUTPUT
+          echo "Package version: $version"
+
+      - name: Build VPM zip
+        run: |
+          # Create a staging directory with package contents
+          mkdir -p staging
+          # Copy package.json to root of zip
+          cp package.json staging/
+          # Copy asset folder
+          cp -r Assets/VRCWorldDrop staging/VRCWorldDrop
+          cp Assets/VRCWorldDrop.meta staging/VRCWorldDrop.meta
+          # Create the zip
+          cd staging
+          zip -r ../${{env.packageName}}-${{steps.version.outputs.version}}.zip .
+          cd ..
+
+      - name: Create meta list
+        run: find Assets/VRCWorldDrop Assets/VRCWorldDrop.meta -name '*.meta' > metaList
+
+      - name: Create .unitypackage
+        uses: pCYSl5EDgo/create-unitypackage@b5c57408698b1fab8b3a84d4b67f767b8b7c0be9 # v1.2.3
+        with:
+          package-path: VRCWorldDrop_${{steps.version.outputs.version}}.unitypackage
+          include-files: metaList
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{steps.version.outputs.version}}
+          name: v${{steps.version.outputs.version}}
+          files: |
+            ${{env.packageName}}-${{steps.version.outputs.version}}.zip
+            VRCWorldDrop_${{steps.version.outputs.version}}.unitypackage
+            package.json
