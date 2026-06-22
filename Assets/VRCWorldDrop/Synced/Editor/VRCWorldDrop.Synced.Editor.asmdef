@@ -1,0 +1,20 @@
+{
+    "name": "VRCWorldDrop.Synced.Editor",
+    "references": [
+        "VRCWorldDrop.Synced.Runtime",
+        "VRC.SDKBase",
+        "VRC.SDK3A",
+        "VRC.SDKBase.Editor.BuildPipeline"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

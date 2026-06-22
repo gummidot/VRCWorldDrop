@@ -70,3 +70,12 @@ crashlytics-build.properties
 # Temporary auto-generated Android Assets
 /[Aa]ssets/[Ss]treamingAssets/aa.meta
 /[Aa]ssets/[Ss]treamingAssets/aa/*
+
+# WdsBusComposer build-time scratch (regenerated every build).
+/Assets/VRCWorldDrop/Synced/_Temp/
+/Assets/VRCWorldDrop/Synced/_Temp.meta
+
+# npm tooling deps (Tools/PackageExporter). Lockfile is committed; modules are not.
+node_modules/
+
+.env

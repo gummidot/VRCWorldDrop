@@ -1,21 +1,14 @@
 {
-  "name": "com.gummidot.vrc-world-drop",
-  "displayName": "VRCWorldDrop",
+  "name": "vrcworlddrop-tools",
   "version": "1.0.0",
-  "unity": "2022.3",
-  "description": "Simple world drop toggle for avatars. Drag-n-drop installation with VRCFury. Quest compatible!",
-  "author": {
-    "name": "gummidot",
-    "url": "https://github.com/gummidot"
+  "private": true,
+  "description": "Tooling for the VRCWorldDrop project (package export, etc.). The shipped VPM manifest lives at Assets/VRCWorldDrop/package.json.",
+  "scripts": {
+    "export": "node Tools/PackageExporter/export.mjs",
+    "export:vpm": "node Tools/PackageExporter/export.mjs --vpm",
+    "export:all": "node Tools/PackageExporter/export.mjs && node Tools/PackageExporter/export.mjs --vpm"
   },
-  "license": "MIT",
-  "keywords": [
-    "vrchat",
-    "avatar",
-    "world-drop",
-    "vrcfury"
-  ],
-  "legacyFolders": {
-    "Assets\\VRCWorldDrop": ""
+  "devDependencies": {
+    "tar-stream": "^3.1.7"
   }
 }

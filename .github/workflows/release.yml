@@ -8,6 +8,8 @@ permissions:
 
 env:
   packageName: com.gummidot.vrc-world-drop
+  # VPM manifest lives inside the package folder (the folder is the package root).
+  manifest: Assets/VRCWorldDrop/package.json
 
 jobs:
   build:
@@ -15,42 +17,40 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
       - name: Get version
         id: version
         run: |
-          version=$(jq -r '.version' package.json)
-          echo "version=$version" >> $GITHUB_OUTPUT
+          version=$(jq -r '.version' "$manifest")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Package version: $version"
+
+      - name: Install tooling deps
+        run: npm ci
+
+      - name: Build .unitypackage
+        run: npm run export
 
       - name: Build VPM zip
         run: |
-          # Create a staging directory with package contents
+          # The package folder IS the package root: package.json sits alongside
+          # the assets, so the zip is just the folder's contents (flat layout).
           mkdir -p staging
-          # Copy package.json to root of zip
-          cp package.json staging/
-          # Copy asset folder
-          cp -r Assets/VRCWorldDrop staging/VRCWorldDrop
-          cp Assets/VRCWorldDrop.meta staging/VRCWorldDrop.meta
-          # Create the zip
+          cp -r Assets/VRCWorldDrop/. staging/
+          rm -rf staging/Synced/_Temp staging/Synced/_Temp.meta
           cd staging
-          zip -r ../${{env.packageName}}-${{steps.version.outputs.version}}.zip .
+          zip -r "../${packageName}-${{ steps.version.outputs.version }}.zip" .
           cd ..
-
-      - name: Create meta list
-        run: find Assets/VRCWorldDrop Assets/VRCWorldDrop.meta -name '*.meta' > metaList
-
-      - name: Create .unitypackage
-        uses: pCYSl5EDgo/create-unitypackage@b5c57408698b1fab8b3a84d4b67f767b8b7c0be9 # v1.2.3
-        with:
-          package-path: VRCWorldDrop_${{steps.version.outputs.version}}.unitypackage
-          include-files: metaList
 
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{steps.version.outputs.version}}
-          name: v${{steps.version.outputs.version}}
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
           files: |
-            ${{env.packageName}}-${{steps.version.outputs.version}}.zip
-            VRCWorldDrop_${{steps.version.outputs.version}}.unitypackage
-            package.json
+            ${{ env.packageName }}-${{ steps.version.outputs.version }}.zip
+            VRCWorldDrop_v${{ steps.version.outputs.version }}.unitypackage
+            ${{ env.manifest }}
