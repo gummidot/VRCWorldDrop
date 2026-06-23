@@ -47,8 +47,9 @@ namespace VRCWorldDrop.Synced {
                     int n = count;
                     var settings = desc.GetComponentInChildren<WdsSyncedSettings>(true);
                     bool fast = settings != null && settings.revealSpeed == WdsRevealSpeed.Fast;
-                    int bits = (fast ? 72 : 40) + 3 * n;
-                    int reveal = Mathf.Max(2, Mathf.RoundToInt(n * (fast ? 0.45f : 0.8f)));
+                    // Backend width is sized to the object count (AutoLanes), so cost is count-dependent.
+                    int bits = WdsMuxGenerator.BackendBits(WdsMuxGenerator.AutoLanes(n, fast)) + 3 * n;
+                    int reveal = WdsMuxGenerator.EstimateRevealSeconds(n, fast);
                     EditorGUILayout.HelpBox(
                         n + " synced object" + (n == 1 ? "" : "s") + " on this avatar. " + bits + " synced bits (" +
                         (fast ? "Fast" : "Slow") + " mode). With all " + n + " dropped at once, the slowest appears " +

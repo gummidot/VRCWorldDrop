@@ -1,5 +1,5 @@
 // Multi-object shared-mux generator. Produces N independently-droppable world-drop "slots" that
-// share ONE synced mux (WDM/Lane0..Lane3 + WDM/Idx) via a cross-slot broadcast RING. The cascade and
+// share ONE synced mux (WDM/Lane0..Lane(L-1) + WDM/Idx) via a cross-slot broadcast RING. The cascade and
 // rotation decode geometry already lives in each WorldDropSynced prefab's contact rig; this file
 // retags every instance per slot (no geometry is duplicated) and adds the slot parameterization and
 // the ring on top.
@@ -44,13 +44,14 @@ namespace VRCWorldDrop.Synced {
         // a 0.2cm tax to never saturate.
         const float FineBoxHalf = 0.5f;
         // Channels broadcast per step; wider = fewer steps/object = faster reveal, at +8 synced bits/lane.
-        // Set per build (by the build hook) from the avatar's reveal-speed setting, then read
-        // by Emit. Default 4 (Slow, fewest bits); the settings object's Fast picks 8.
+        // Set per build (by the build hook) from AutoLanes(objectCount, fast), then read by Emit. The
+        // build hook sizes it to the object count so a low-count avatar pays a narrower backend; the
+        // value lands in [2, 8]. Default 4 here is a safe standalone fallback (matches old Slow).
         public static int Lanes = 4;
-        // Optional override of the lane width (null = use the avatar's reveal-speed setting); the build
-        // hook applies LanesOverride ?? lanes. Set it to force a fixed width.
+        // Optional fixed-width override the build hook honors (null = use AutoLanes); it applies
+        // LanesOverride ?? AutoLanes(...). Set it to pin the lane width to a specific value.
         public static int? LanesOverride = null;
-        public const int MAXSTEP = 10;   // 1 token + max steps; full-rot ceil(15/L) <= 4 at L>=4, so 10 is ample headroom
+        public const int MAXSTEP = 10;   // 1 token + max steps. Narrowest L=2 -> full-rot ceil(15/2)=8 steps; ring needs steps < MAXSTEP, 8 < 10 (1 token spare). Idx max at n=16 = 15*10+8 = 158 < 256.
         const float StepDwell = 0.3f;
 
         static readonly string[] Axes = { "X", "Y", "Z" };
@@ -68,6 +69,41 @@ namespace VRCWorldDrop.Synced {
 
         public static int Steps(bool fullRot) => (ChannelCount(fullRot) + Lanes - 1) / Lanes;
         static int ChannelCount(bool fullRot) => fullRot ? 15 : 11;
+
+        // Auto-size the broadcast width to the object count. Few objects reveal fast even on a narrow
+        // channel, so a low-count avatar need not pay for the full 4/8-lane backend; the build hook,
+        // the marker inspector and the settings inspector all size cost through here so the displayed
+        // and shipped backends never drift. Sized against the worst-case (full-rotation, 15-channel)
+        // reveal, so a Y-only or mixed avatar only ever reveals faster. Slow picks the narrowest width;
+        // Fast is ~2x wider (the reveal-speed dial), capped so a high-count avatar matches the old flat 4/8.
+        //   objects   Slow lanes (backend bits)   Fast lanes (backend bits)
+        //    1-2          2 (24)                      4 (40)
+        //    3-5          3 (32)                      6 (56)
+        //    6-16         4 (40)                      8 (72)
+        // Floored at 2 lanes, never 1 (one lane = too many steps/object: slow reveal + more missed-packet exposure).
+        public static int AutoLanes(int objectCount, bool fast) {
+            int slow = objectCount <= 2 ? 2 : objectCount <= 5 ? 3 : 4;
+            return fast ? Math.Min(8, slow * 2) : slow;
+        }
+
+        // Synced backend bits for a lane width: L lane ints + the Idx int, 8 bits each. Per-object cost
+        // (3 bits: Drop/Show/Live) is added by the caller.
+        public static int BackendBits(int lanes) => 8 * lanes + 8;
+
+        // Rough reveal estimate (seconds) for the slowest object when all are dropped at once, for the
+        // inspectors. Two effects combine: (a) narrower lanes run more steps per object, so a low
+        // object count - which gets narrow auto-lanes - has a HIGHER per-object reveal floor (a 1-2
+        // object avatar is 2 lanes / ~8 steps and reveals ~3s, not faster); (b) dropping more at once
+        // lengthens the broadcast ring. Take the larger of the one-drop floor (steps * ~0.4s, steps =
+        // ceil(channels / lanes) at the worst-case full-rotation channel count) and the all-dropped
+        // growth (~0.9 s/object Slow, ~0.45 Fast). Rotation family is ignored (uses the 15-channel
+        // worst case, so a Y-only avatar over-estimates slightly, the safe side); a ballpark, not exact.
+        public static int EstimateRevealSeconds(int objectCount, bool fast) {
+            int steps = Mathf.CeilToInt(15f / AutoLanes(objectCount, fast));
+            int oneDropFloor = Mathf.RoundToInt(steps * 0.4f);              // reveal for one drop at this lane width
+            int allDroppedGrowth = Mathf.RoundToInt(objectCount * (fast ? 0.45f : 0.9f));
+            return Mathf.Max(2, Mathf.Max(oneDropFloor, allDroppedGrowth));
+        }
 
         struct Chan { public string name; public bool isInt; }
         static Chan[] Channels(int slot, bool fullRot) {
@@ -287,7 +323,8 @@ namespace VRCWorldDrop.Synced {
 
             // shared params
             EnsureBool(ctrl, "IsLocal"); EnsureFloat(ctrl, MUX + "One", 1f);
-            EnsureInt(ctrl, MUX + "Lane0"); EnsureInt(ctrl, MUX + "Lane1"); EnsureInt(ctrl, MUX + "Idx"); EnsureBool(ctrl, MUX + "AnyDrop");
+            for (int s = 0; s < Lanes; s++) EnsureInt(ctrl, MUX + "Lane" + s);   // declare every lane the width uses
+            EnsureInt(ctrl, MUX + "Idx"); EnsureBool(ctrl, MUX + "AnyDrop");
             foreach (var slot in slots) {
                 string p = P(slot.id);
                 EnsureBool(ctrl, p + "Drop"); EnsureBool(ctrl, p + "Show"); EnsureBool(ctrl, p + "Live"); EnsureInt(ctrl, p + "Seen"); EnsureBool(ctrl, p + "RigOn"); EnsureBool(ctrl, p + "Frozen");

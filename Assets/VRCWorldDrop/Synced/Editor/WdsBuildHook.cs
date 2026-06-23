@@ -163,11 +163,13 @@ namespace VRCWorldDrop.Synced {
             if (menu.controls == null) menu.controls = new System.Collections.Generic.List<VRCExpressionsMenu.Control>();
             AssetDatabase.CreateAsset(menu, tempDir + "/WdsMuxMenu.asset");
 
-            // Avatar-wide settings (optional, one object). Reveal speed -> broadcast width: Slow=4 (default,
-            // fewest synced bits), Fast=8 (faster reveal, +32 bits). An explicit LanesOverride wins if set.
+            // Avatar-wide settings (optional, one object). Reveal speed picks the broadcast width through
+            // WdsMuxGenerator.AutoLanes, which sizes the width to the object count: a low-count avatar pays a
+            // narrower backend (Slow 1-2 objects = 2 lanes / 24 bits, vs 4 lanes / 40 at 6+). Fast is ~2x
+            // wider for a faster reveal. An explicit LanesOverride still wins.
             var settings = avatar.GetComponentInChildren<WdsSyncedSettings>(true);
-            int lanes = settings != null && settings.revealSpeed == WdsRevealSpeed.Fast ? 8 : 4;
-            WdsMuxGenerator.Lanes = WdsMuxGenerator.LanesOverride ?? lanes;
+            bool fast = settings != null && settings.revealSpeed == WdsRevealSpeed.Fast;
+            WdsMuxGenerator.Lanes = WdsMuxGenerator.LanesOverride ?? WdsMuxGenerator.AutoLanes(used.Count, fast);
 
             // Off-screen reveal (anti-cull): when requested, add a material-less large-bounds renderer so
             // VRChat keeps animating the avatar while it is off a remote's screen (forces Very Poor). Built

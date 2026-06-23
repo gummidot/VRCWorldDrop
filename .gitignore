@@ -71,7 +71,7 @@ crashlytics-build.properties
 /[Aa]ssets/[Ss]treamingAssets/aa.meta
 /[Aa]ssets/[Ss]treamingAssets/aa/*
 
-# WdsBusComposer build-time scratch (regenerated every build).
+# Synced world drop build-time scratch (regenerated every avatar build).
 /Assets/VRCWorldDrop/Synced/_Temp/
 /Assets/VRCWorldDrop/Synced/_Temp.meta
 

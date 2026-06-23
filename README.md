@@ -13,8 +13,8 @@ Add your custom object to the prefab, set the menu path, and upload. Copy-paste 
 | | Regular | Synced |
 | --- | --- | --- |
 | Late-joiner sync | No, re-drop when players join | Yes |
-| Cost (per object) | 2 bits, 2 constraints | 3 bits, ~12 constraints<br/>~15-20 *local* box contacts |
-| Base cost (per avatar) | none | 40 bits (Slow) / 72 bits (Fast) |
+| Cost (per object) | 2 bits, 2 constraints | 3 bits, ~12 constraints<br/>~15-20 box contacts |
+| Base cost (per avatar) | none | 24-40 bits (Slow) / 40-72 bits (Fast), by object count |
 
 Use the **synced** world drops if you need late-joiners to see the object in the same spot. Otherwise the **regular** world drops are lighter on performance, but you will have to re-drop them when new players join.
 
@@ -93,7 +93,15 @@ Sync up to **16 objects** for late-joiners. There are a few limitations to be aw
 
 ### Performance
 
-Synced drops require **40 bits** of synced params (or **72 bits** on *Fast* mode) per avatar. After that, each object adds:
+Synced drops require **24 to 40 bits** of synced params per avatar (or **40 to 72 bits** on *Fast* mode), depending on how many objects you sync:
+
+| Objects | Base cost (Slow) | Base cost (Fast) |
+| --- | --- | --- |
+| 1-2 | 24 bits | 40 bits |
+| 3-5 | 32 bits | 56 bits |
+| 6-16 | 40 bits | 72 bits |
+
+Each object then adds:
 
 | Rotation | Synced params | VRC constraints | Local contacts |
 | --- | --- | --- | --- |
@@ -141,7 +149,7 @@ Optional steps:
 
 For optional settings, drag a **`WorldDropSynced Settings`** object onto your avatar:
 
-- **Mode:** *Slow* mode by default (~3-14s delay, 40 synced bits). *Fast* mode cuts the delay in half at the cost of more synced params (~2-7s delay, 72 synced bits).
+- **Mode:** *Slow* mode by default (~3-14s delay, ~24-40 synced bits depending on object count). *Fast* mode cuts the delay roughly in half at the cost of more synced params (~2-7s delay, ~40-72 bits). The Settings inspector shows the exact synced param cost.
 - **Anti-Cull Protection:** Off by default. After you hide and reshow a drop, remote users may not see it until they look at your avatar due to animator culling. Turn this on to prevent objects from being hidden when you reshow them. This uses an invisible object to extend your avatar bounds, so you will be **Very Poor** ranked. Leave it off unless you really need it.
 
 ![WorldDropSynced Settings](Doc/WorldDropSync_Settings.jpg)

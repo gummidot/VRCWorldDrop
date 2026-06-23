@@ -33,18 +33,21 @@ namespace VRCWorldDrop.Synced {
             var speed = serializedObject.FindProperty("revealSpeed");
             EditorGUILayout.PropertyField(speed, new GUIContent("Mode"));
             bool fast = speed.enumValueIndex == (int)WdsRevealSpeed.Fast;
-            int backend = fast ? 72 : 40;
             string modeInfo;
             if (n > 0) {
+                // Backend width is sized to the object count (AutoLanes), so cost and the Slow->Fast
+                // delta are count-dependent, not a flat 40/72/+32.
+                int backend = WdsMuxGenerator.BackendBits(WdsMuxGenerator.AutoLanes(n, fast));
                 int bits = backend + 3 * n;
-                int reveal = Mathf.Max(2, Mathf.RoundToInt(n * (fast ? 0.45f : 0.8f)));
+                int reveal = WdsMuxGenerator.EstimateRevealSeconds(n, fast);
+                int fastDelta = WdsMuxGenerator.BackendBits(WdsMuxGenerator.AutoLanes(n, true)) - WdsMuxGenerator.BackendBits(WdsMuxGenerator.AutoLanes(n, false));
                 modeInfo = (fast ? "Fast" : "Slow (default)") + ": ~" + bits + " synced bits on this avatar (" +
                     backend + " + 3 x " + n + "). With all " + n + " dropped at once, the slowest appears in about " +
-                    reveal + "s" + (fast ? "." : " - switch to Fast to roughly halve that, for +32 bits.");
+                    reveal + "s" + (fast ? "." : " - switch to Fast to roughly halve that, for +" + fastDelta + " bits.");
             } else {
                 modeInfo = (fast
-                    ? "Fast: 8-lane backend (72 bits), ~2x quicker reveal, +32 synced bits vs Slow."
-                    : "Slow (default): 4-lane backend (40 bits), the fewest synced bits.") +
+                    ? "Fast: ~2x quicker reveal, wider backend (40-72 synced bits depending on object count)."
+                    : "Slow (default): the fewest synced bits, sized to your object count (24-40 bits).") +
                     " Add WorldDropSynced objects to see this avatar's exact cost.";
             }
             EditorGUILayout.HelpBox(modeInfo, MessageType.None);
