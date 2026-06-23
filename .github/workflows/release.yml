@@ -38,6 +38,7 @@ jobs:
         run: |
           # The package folder IS the package root: package.json sits alongside
           # the assets, so the zip is just the folder's contents (flat layout).
+          # VCC needs this zip + package.json on the release to list the version.
           mkdir -p staging
           cp -r Assets/VRCWorldDrop/. staging/
           rm -rf staging/Synced/_Temp staging/Synced/_Temp.meta
@@ -45,11 +46,26 @@ jobs:
           zip -r "../${packageName}-${{ steps.version.outputs.version }}.zip" .
           cd ..
 
+      - name: Extract changelog entry
+        run: |
+          # Pull the section for this version out of CHANGELOG.md (everything
+          # between this version's "# x.y.z" heading and the next "# " heading)
+          # to use as the release description.
+          version="${{ steps.version.outputs.version }}"
+          awk -v ver="$version" '
+            index($0, "# " ver) == 1 { capture=1; next }
+            /^# / && capture { exit }
+            capture { print }
+          ' CHANGELOG.md > release-notes.md
+          echo "Release notes for $version:"
+          cat release-notes.md
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.version }}
           name: v${{ steps.version.outputs.version }}
+          body_path: release-notes.md
           files: |
             ${{ env.packageName }}-${{ steps.version.outputs.version }}.zip
             VRCWorldDrop_v${{ steps.version.outputs.version }}.unitypackage

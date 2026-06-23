@@ -6,7 +6,9 @@
   "scripts": {
     "export": "node Tools/PackageExporter/export.mjs",
     "export:vpm": "node Tools/PackageExporter/export.mjs --vpm",
-    "export:all": "node Tools/PackageExporter/export.mjs && node Tools/PackageExporter/export.mjs --vpm"
+    "export:all": "node Tools/PackageExporter/export.mjs && node Tools/PackageExporter/export.mjs --vpm && node Tools/PackageExporter/zip-package.mjs",
+    "export:zip": "node Tools/PackageExporter/export.mjs && node Tools/PackageExporter/zip-package.mjs",
+    "zip": "node Tools/PackageExporter/zip-package.mjs"
   },
   "devDependencies": {
     "tar-stream": "^3.1.7"

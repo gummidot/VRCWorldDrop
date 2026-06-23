@@ -13,8 +13,8 @@ Add your custom object to the prefab, set the menu path, and upload. Copy-paste 
 | | Regular | Synced |
 | --- | --- | --- |
 | Late-joiner sync | No, re-drop when players join | Yes |
-| Cost (per object) | 2 bits, 2 constraints | 3 bits, ~12 constraints<br/>~15-20 box contacts |
-| Base cost (per avatar) | none | 24-40 bits (Slow) / 40-72 bits (Fast), by object count |
+| Cost (per object) | 2 synced bits, 2 constraints | 3 synced bits, ~12 constraints<br/>~15-20 *local* contacts |
+| Base cost (per avatar) | none | 24-40 synced bits (Slow) / 40-72 synced bits (Fast), by object count |
 
 Use the **synced** world drops if you need late-joiners to see the object in the same spot. Otherwise the **regular** world drops are lighter on performance, but you will have to re-drop them when new players join.
 

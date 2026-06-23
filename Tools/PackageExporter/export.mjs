@@ -7,8 +7,7 @@ import { pack } from 'tar-stream';
 // Builds a VRCWorldDrop .unitypackage straight from disk, no Unity Editor needed.
 // A .unitypackage is just a gzipped tar where every asset lives in a folder named
 // after its GUID, holding: asset (the file), asset.meta (the .meta), pathname
-// (where Unity drops it on import). See VRCLens_Custom/tools/export.mjs (the tested
-// original this is adapted from).
+// (where Unity drops it on import).
 //
 // Usage:
 //   node export.mjs            -> Assets/VRCWorldDrop/...        (legacy/import-into-Assets)

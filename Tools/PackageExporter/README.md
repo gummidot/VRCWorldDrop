@@ -6,8 +6,7 @@ Unity Editor. Used both for local testing and by the release workflow
 
 A `.unitypackage` is just a gzipped tar where every asset lives in a folder named
 after its GUID, holding `asset` (the file), `asset.meta` (its `.meta`), and
-`pathname` (where Unity drops it on import). Adapted from the tested exporter in
-`../../../VRCLens_Custom/tools/export.mjs`.
+`pathname` (where Unity drops it on import).
 
 ## Usage
 
@@ -18,10 +17,12 @@ npm install          # first time only (or `npm ci` from the committed lockfile)
 
 npm run export       # -> VRCWorldDrop_v<version>.unitypackage      (Assets/ layout)
 npm run export:vpm   # -> VRCWorldDrop_v<version>_VPM.unitypackage  (Packages/ layout)
-npm run export:all   # both
+npm run export:zip   # -> VRCWorldDrop_v<version>.zip               (the Assets unitypackage, zipped)
+npm run export:all   # all of the above
+npm run zip          # zip an already-exported unitypackage
 ```
 
-Output `.unitypackage` files land in the repo root (gitignored).
+Output `.unitypackage` and `.zip` files land in the repo root (gitignored).
 
 ## What it does
 
