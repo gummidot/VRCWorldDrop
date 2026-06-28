@@ -10,6 +10,8 @@ namespace VRCWorldDrop.Synced {
     [CustomEditor(typeof(WdsSyncedDrop))]
     [CanEditMultipleObjects]
     public class WdsSyncedDropEditor : Editor {
+        static bool _showAdvanced;
+
         public override void OnInspectorGUI() {
             var m = (WdsSyncedDrop)target;
 
@@ -24,10 +26,10 @@ namespace VRCWorldDrop.Synced {
             }
 
             EditorGUILayout.HelpBox(
-                "Synced World Drop. Put your object under Container > Item. You can add up to " +
+                "Synced World Drop. Put your object under Container/Item. You can add up to " +
                 WdsBuildHook.MaxSlots + " of these per avatar. Copies are synced together " +
-                "automatically when you upload.\n\nTo move it, move the Reset Target object. To hide it " +
-                "in the Scene, disable the Container > Item object (not Container).",
+                "automatically when you upload.\n\nTo move it, move the Reset Target object. Use Default " +
+                "Shown to choose whether it starts visible. To hide it in the Scene view, disable Container/Item.",
                 MessageType.Info);
 
             // Warn at edit time if this avatar already exceeds the supported count, so the user sees
@@ -58,23 +60,36 @@ namespace VRCWorldDrop.Synced {
                 }
             }
 
-            // The basic prefab is hidden by disabling Container; the synced rig needs Container enabled
-            // (it is auto-re-enabled on upload, and the object starts hidden via Show anyway). Nudge users
-            // who carried that habit over from the basic prefab.
-            var container = m.transform.Find("Container");
-            if (container != null && !container.gameObject.activeSelf)
-                EditorGUILayout.HelpBox(
-                    "Container is disabled. The synced variant needs it enabled (unlike the basic prefab); " +
-                    "it will be re-enabled on upload. The object already starts hidden - toggle Show to reveal it. " +
-                    "To hide it in the Scene, disable Container > Item or its renderer instead.",
-                    MessageType.Warning);
-
             using (new EditorGUI.DisabledScope(true))
                 EditorGUILayout.LabelField("Rotation", m.fullRotation ? "Full" : "Y only");
 
             serializedObject.Update();
-            var menu = serializedObject.FindProperty("menuPath");
-            EditorGUILayout.PropertyField(menu, new GUIContent("Menu Path", menu.tooltip));
+            var menuPath = serializedObject.FindProperty("menuPath");
+            var defaultShown = serializedObject.FindProperty("defaultShown");
+            var dropParam = serializedObject.FindProperty("dropParam");
+            var showParam = serializedObject.FindProperty("showParam");
+
+            // Common controls. Menu Path drives the built-in Show/Drop submenu; greyed out when a Drop/Show
+            // Param is set (a host drives it, so no built-in menu is authored).
+            using (new EditorGUI.DisabledScope(!string.IsNullOrWhiteSpace(dropParam.stringValue) || !string.IsNullOrWhiteSpace(showParam.stringValue)))
+                EditorGUILayout.PropertyField(menuPath, new GUIContent("Menu Path", menuPath.tooltip));
+            EditorGUILayout.PropertyField(defaultShown, new GUIContent("Default Shown", defaultShown.tooltip));
+
+            // Integration controls, tucked away so a normal drop stays a one-field setup. Open this to drive
+            // the object from your own menu instead of the built-in toggles.
+            EditorGUILayout.Space();
+            _showAdvanced = EditorGUILayout.Foldout(_showAdvanced, "Use your own menu (optional)", true);
+            if (_showAdvanced) {
+                using (new EditorGUI.IndentLevelScope()) {
+                    EditorGUILayout.HelpBox(
+                        "To control this object from your own menu instead of the built-in Show/Drop toggles, enter " +
+                        "the avatar bool parameters your own toggles use (this hides the built-in menu). These " +
+                        "parameters should be local (the drop is synced internally).",
+                        MessageType.None);
+                    EditorGUILayout.PropertyField(dropParam, new GUIContent("Drop Param", dropParam.tooltip));
+                    EditorGUILayout.PropertyField(showParam, new GUIContent("Show Param", showParam.tooltip));
+                }
+            }
             serializedObject.ApplyModifiedProperties();
         }
     }

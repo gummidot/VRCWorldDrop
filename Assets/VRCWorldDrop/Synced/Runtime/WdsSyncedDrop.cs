@@ -14,8 +14,24 @@ namespace VRCWorldDrop.Synced {
         public bool fullRotation = false;
 
         [Tooltip("Menu location for this object's Show/Drop toggles, e.g. \"Props/Tent\". Use \"/\" " +
-                 "to nest. N is automatically replaced with a number (1, 2, ...).")]
+                 "to nest. N is automatically replaced with a number (1, 2, ...). Ignored when you set a Drop/Show Param.")]
         public string menuPath = "WorldDrops/Object N (Synced)";
+
+        [Tooltip("Start visible instead of hidden. Off = object is hidden until Shown (default). " +
+                 "On = object is visible from the start. Any Show toggle reflects this initial state.")]
+        public bool defaultShown = false;
+
+        [Tooltip("The avatar bool your own toggle uses to drop this object. " +
+                 "Should be local (synced internally).")]
+        public string dropParam = "";
+
+        [Tooltip("The avatar bool your own toggle uses to show or hide this object. " +
+                 "Should be local (synced internally).")]
+        public string showParam = "";
+
+        // The author-named drive params, normalized (blank -> null = no host binding, use the built-in toggle).
+        public string DropParamOrNull => string.IsNullOrWhiteSpace(dropParam) ? null : dropParam.Trim();
+        public string ShowParamOrNull => string.IsNullOrWhiteSpace(showParam) ? null : showParam.Trim();
 
         // The prefab keeps the original source tags/params; the build hook rewrites them per slot
         // based on `fullRotation`. These name the source prefixes to rewrite from.

@@ -62,10 +62,12 @@ namespace VRCWorldDrop.Synced {
         static string CP(int slot) => "WDM" + slot + "_";
 
         /// <summary>One world-drop slot: a unique id, rotation family, the avatar-relative path to
-        /// its root GameObject (where Container / _Sync live), and the menu path for its Show/Drop
+        /// its root GameObject (where Container / _Sync live), the menu path for its Show/Drop
         /// toggles ("N" in the path is replaced with the object number; blank falls back to
-        /// "WorldDrops/Object N (Synced)").</summary>
-        public struct Slot { public int id; public bool fullRot; public string basePath; public string menuPath; }
+        /// "WorldDrops/Object N (Synced)"), whether it starts visible (defaultShown), and optional
+        /// author-named drive params (dropAlias/showAlias, null when unset; setting either suppresses the
+        /// built-in menu and lets a host drive this object's Drop/Show from its own UI).</summary>
+        public struct Slot { public int id; public bool fullRot; public string basePath; public string menuPath; public bool defaultShown; public string dropAlias; public string showAlias; }
 
         public static int Steps(bool fullRot) => (ChannelCount(fullRot) + Lanes - 1) / Lanes;
         static int ChannelCount(bool fullRot) => fullRot ? 15 : 11;
@@ -288,7 +290,7 @@ namespace VRCWorldDrop.Synced {
         static VRC_AvatarParameterDriver.Parameter Set(string dst, float v) => new VRC_AvatarParameterDriver.Parameter { type = VRC_AvatarParameterDriver.ChangeType.Set, name = dst, value = v };
         static VRC_AvatarParameterDriver.Parameter AddTo(string dst, float v) => new VRC_AvatarParameterDriver.Parameter { type = VRC_AvatarParameterDriver.ChangeType.Add, name = dst, value = v };
 
-        static void EnsureBool(AnimatorController c, string n) { if (!c.parameters.Any(p => p.name == n)) c.AddParameter(new AnimatorControllerParameter { name = n, type = AnimatorControllerParameterType.Bool, defaultBool = false }); }
+        static void EnsureBool(AnimatorController c, string n, bool def = false) { if (!c.parameters.Any(p => p.name == n)) c.AddParameter(new AnimatorControllerParameter { name = n, type = AnimatorControllerParameterType.Bool, defaultBool = def }); }
         static void EnsureInt(AnimatorController c, string n) { if (!c.parameters.Any(p => p.name == n)) c.AddParameter(new AnimatorControllerParameter { name = n, type = AnimatorControllerParameterType.Int, defaultInt = 0 }); }
         static void EnsureFloat(AnimatorController c, string n, float d = 0) { if (!c.parameters.Any(p => p.name == n)) c.AddParameter(new AnimatorControllerParameter { name = n, type = AnimatorControllerParameterType.Float, defaultFloat = d }); }
 
@@ -327,7 +329,10 @@ namespace VRCWorldDrop.Synced {
             EnsureInt(ctrl, MUX + "Idx"); EnsureBool(ctrl, MUX + "AnyDrop");
             foreach (var slot in slots) {
                 string p = P(slot.id);
-                EnsureBool(ctrl, p + "Drop"); EnsureBool(ctrl, p + "Show"); EnsureBool(ctrl, p + "Live"); EnsureInt(ctrl, p + "Seen"); EnsureBool(ctrl, p + "RigOn"); EnsureBool(ctrl, p + "Frozen");
+                EnsureBool(ctrl, p + "Drop"); EnsureBool(ctrl, p + "Show", slot.defaultShown); EnsureBool(ctrl, p + "Live"); EnsureInt(ctrl, p + "Seen"); EnsureBool(ctrl, p + "RigOn"); EnsureBool(ctrl, p + "Frozen");
+                // Author-named drive params (local; the bridge layer mirrors them onto WDM<slot>/Drop|Show on the owner).
+                if (slot.dropAlias != null) EnsureBool(ctrl, slot.dropAlias);
+                if (slot.showAlias != null) EnsureBool(ctrl, slot.showAlias, slot.defaultShown);
                 foreach (var a in Axes) { EnsureInt(ctrl, p + "Super" + a); EnsureFloat(ctrl, p + "Super" + a + "F"); EnsureInt(ctrl, p + "Cell" + a); EnsureFloat(ctrl, p + "Cell" + a + "F"); EnsureFloat(ctrl, p + "Fine" + a); EnsureFloat(ctrl, p + "RawS" + a); EnsureFloat(ctrl, p + "RawC" + a); EnsureFloat(ctrl, p + "RawF" + a); }
                 EnsureFloat(ctrl, p + "ForwardX"); EnsureFloat(ctrl, p + "ForwardZ"); EnsureFloat(ctrl, p + "RawFwdX"); EnsureFloat(ctrl, p + "RawFwdZ");
                 if (slot.fullRot) { EnsureFloat(ctrl, p + "ForwardY"); EnsureFloat(ctrl, p + "RawFwdY"); foreach (var a in Axes) { EnsureFloat(ctrl, p + "Up" + a); EnsureFloat(ctrl, p + "RawU" + a); } }
@@ -571,16 +576,51 @@ namespace VRCWorldDrop.Synced {
                 for (int k = 0; k < steps; k++) Cond(ring[k].AddTransition(ring[(k + 1) % steps]), Eq(MUX + "Idx", baseIdx + 1 + ((k + 1) % steps)));
                 Any(sm, wait, IfNot(p + "Drop"));
             }
+
+            // Bridge (owner): when this object names an author drive param, mirror that local param onto the
+            // synced WDM<slot>/Drop|Show. The drivers are localOnly, so only the owner writes the synced param
+            // (which then propagates to remotes); on a remote the param sits at its local default and the no-op
+            // driver leaves the synced value untouched. This makes the bridge the single writer of the synced
+            // param - the menu binds the author param, not WDM - so the host's UI and our menu can both drive
+            // the object without two writers fighting over it. Drop and Show are independent: either may exist.
+            void Mirror(string layer, string src, string target, bool defOn) {
+                AddLayer(layer);
+                var sm = ctrl.layers[ctrl.layers.Length - 1].stateMachine;
+                var off = St(sm, "Off", c.Buffer1F, new Vector3(200, 0, 0));
+                var on = St(sm, "On", c.Buffer1F, new Vector3(200, 100, 0));
+                // Start in the state matching the source's default, so no startup transition flickers the param.
+                sm.defaultState = defOn ? on : off;
+                AddDriver(ctrl, off, true, Set(target, 0));
+                AddDriver(ctrl, on, true, Set(target, 1));
+                Any(sm, on, If(src));
+                Any(sm, off, IfNot(src));
+            }
+            if (slot.dropAlias != null) Mirror(cp + "BridgeDrop", slot.dropAlias, p + "Drop", false);
+            if (slot.showAlias != null) Mirror(cp + "BridgeShow", slot.showAlias, p + "Show", slot.defaultShown);
         }
 
         // ============================ params + menu ============================
 
         static void EmitParams(VRCExpressionParameters prms, Slot[] slots) {
             var list = prms.parameters != null ? prms.parameters.ToList() : new List<VRCExpressionParameters.Parameter>();
-            void AddSynced(string name, VRCExpressionParameters.ValueType vt) { if (!list.Any(x => x.name == name)) list.Add(new VRCExpressionParameters.Parameter { name = name, valueType = vt, networkSynced = true, saved = false }); }
+            void Add(string name, VRCExpressionParameters.ValueType vt, bool synced, float def = 0) { if (!list.Any(x => x.name == name)) list.Add(new VRCExpressionParameters.Parameter { name = name, valueType = vt, networkSynced = synced, saved = false, defaultValue = def }); }
+            void AddSynced(string name, VRCExpressionParameters.ValueType vt, float def = 0) => Add(name, vt, true, def);
             for (int s = 0; s < Lanes; s++) AddSynced(MUX + "Lane" + s, VRCExpressionParameters.ValueType.Int);
             AddSynced(MUX + "Idx", VRCExpressionParameters.ValueType.Int);
-            foreach (var slot in slots) { AddSynced(P(slot.id) + "Drop", VRCExpressionParameters.ValueType.Bool); AddSynced(P(slot.id) + "Show", VRCExpressionParameters.ValueType.Bool); AddSynced(P(slot.id) + "Live", VRCExpressionParameters.ValueType.Bool); }
+            foreach (var slot in slots) {
+                AddSynced(P(slot.id) + "Drop", VRCExpressionParameters.ValueType.Bool);
+                // Show defaults to the author's choice so the object spawns shown or hidden (and any Show toggle
+                // reflects it). The synced default is what a remote/late-joiner reads before the owner's value arrives.
+                AddSynced(P(slot.id) + "Show", VRCExpressionParameters.ValueType.Bool, slot.defaultShown ? 1f : 0f);
+                AddSynced(P(slot.id) + "Live", VRCExpressionParameters.ValueType.Bool);
+                // Author-named drive params are registered LOCAL (not network-synced, so zero synced-bit cost):
+                // the owner's bridge layer copies each onto the synced WDM<slot> param, which propagates to
+                // remotes. The host binds its own menu/FX to these names; Show's local default mirrors
+                // defaultShown so it starts in sync. Drop and Show are independent - either may be set alone.
+                // If the param already exists (the author pointed at one of their own), Add no-ops on it.
+                if (slot.dropAlias != null) Add(slot.dropAlias, VRCExpressionParameters.ValueType.Bool, false);
+                if (slot.showAlias != null) Add(slot.showAlias, VRCExpressionParameters.ValueType.Bool, false, slot.defaultShown ? 1f : 0f);
+            }
             prms.parameters = list.ToArray();
             EditorUtility.SetDirty(prms);
         }
@@ -637,6 +677,9 @@ namespace VRCWorldDrop.Synced {
                 return sub;
             };
             foreach (var slot in slots) {
+                // A named Drop/Show Param means a host drives this object, so author no built-in menu for
+                // it - skip entirely so no empty folder is left behind. No param = the built-in Show + Drop.
+                if (slot.dropAlias != null || slot.showAlias != null) continue;
                 string raw = string.IsNullOrWhiteSpace(slot.menuPath) ? "WorldDrops/Object N (Synced)" : slot.menuPath.Trim();
                 // "N" stands for this object's number, so the shared default "Object N" resolves to
                 // Object 1, Object 2, ... per slot (word-boundary match leaves names like "Neon" alone).
@@ -645,8 +688,13 @@ namespace VRCWorldDrop.Synced {
                 if (segs.Length == 0) segs = new[] { "WorldDrops", "Object " + (slot.id + 1) + " (Synced)" };
                 VRCExpressionsMenu cur = menu; string keyPrefix = "";
                 foreach (var seg in segs) { cur = folder(cur, keyPrefix, seg); keyPrefix = keyPrefix.Length == 0 ? seg : keyPrefix + "/" + seg; }
-                cur.controls.Add(Norm(new VRCExpressionsMenu.Control { name = "Show", type = VRCExpressionsMenu.Control.ControlType.Toggle, parameter = new VRCExpressionsMenu.Control.Parameter { name = P(slot.id) + "Show" } }));
-                cur.controls.Add(Norm(new VRCExpressionsMenu.Control { name = "Drop", type = VRCExpressionsMenu.Control.ControlType.Toggle, parameter = new VRCExpressionsMenu.Control.Parameter { name = P(slot.id) + "Drop" } }));
+                // When the author named a drive param, the toggle binds that param (the bridge layer is the sole
+                // writer of the synced WDM<slot> param), so our menu and a host's UI never both write the same
+                // synced param. Without one, the toggle binds the WDM<slot> param directly (the default).
+                string showParam = slot.showAlias ?? P(slot.id) + "Show";
+                string dropParam = slot.dropAlias ?? P(slot.id) + "Drop";
+                cur.controls.Add(Norm(new VRCExpressionsMenu.Control { name = "Show", type = VRCExpressionsMenu.Control.ControlType.Toggle, parameter = new VRCExpressionsMenu.Control.Parameter { name = showParam } }));
+                cur.controls.Add(Norm(new VRCExpressionsMenu.Control { name = "Drop", type = VRCExpressionsMenu.Control.ControlType.Toggle, parameter = new VRCExpressionsMenu.Control.Parameter { name = dropParam } }));
             }
             // Auto-paginate: VRChat shows at most 8 controls per menu and has no native pagination, so any
             // menu WE own (plus the root) that overflowed gets its tail peeled into a chained "Next" subpage -

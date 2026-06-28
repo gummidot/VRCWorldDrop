@@ -115,17 +115,23 @@ namespace VRCWorldDrop.Synced {
             var slots = new WdsMuxGenerator.Slot[used.Count];
             for (int i = 0; i < used.Count; i++) {
                 var mk = used[i];
-                // The basic (unsynced) prefab tells users to disable Container to hide the object. For
-                // the synced rig Container must stay active - it hosts the parent constraint and the pose
-                // senders - and the object starts hidden via the Show toggle regardless. Re-enable it so
-                // that habit doesn't silently break the synced drop. (Runs on the build copy, not the scene.)
+                // Normalize the two visibility nodes on the build copy (never the scene), so the upload is
+                // deterministic no matter what active states the user toggled. Container must stay active -
+                // it hosts the parent constraint and the pose senders - so re-enable it if disabled.
+                // Container/Item (the visible object) is forced off; from there the Show layer owns its
+                // visibility every frame and Default Shown decides whether it starts revealed. This frees
+                // users from the Container-vs-Item active-state distinction, a frequent source of disabling
+                // the wrong node. The pose senders ride under Container/_SyncSenders (a sibling of Item) and
+                // the decode chain under _Sync, so hiding Item never touches the rig.
                 var container = mk.transform.Find("Container");
                 if (container != null && !container.gameObject.activeSelf) {
                     container.gameObject.SetActive(true);
-                    Debug.Log($"{LogPrefix} '{mk.name}/Container' was disabled; re-enabled it for the synced rig (the object still starts hidden via the Show toggle).");
+                    Debug.Log($"{LogPrefix} '{mk.name}/Container' was disabled; re-enabled it for the synced rig.");
                 }
+                var item = container != null ? container.Find("Item") : null;
+                if (item != null) item.gameObject.SetActive(false);
                 string basePath = AnimationUtility.CalculateTransformPath(mk.transform, avatar.transform);
-                slots[i] = new WdsMuxGenerator.Slot { id = i, fullRot = mk.fullRotation, basePath = basePath, menuPath = mk.menuPath };
+                slots[i] = new WdsMuxGenerator.Slot { id = i, fullRot = mk.fullRotation, basePath = basePath, menuPath = mk.menuPath, defaultShown = mk.defaultShown, dropAlias = mk.DropParamOrNull, showAlias = mk.ShowParamOrNull };
                 WdsMuxGenerator.RetagSlot(mk.gameObject, i, mk.SrcParamPrefix, mk.SrcTag);
             }
 

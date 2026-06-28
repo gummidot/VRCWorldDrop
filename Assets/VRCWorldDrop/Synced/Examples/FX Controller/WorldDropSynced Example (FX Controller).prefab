@@ -1,0 +1,293 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1001 &8739220769673994898
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: 747291055597234298, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: m_Name
+      value: WorldDropSynced Example (FX Controller)
+      objectReference: {fileID: 0}
+    - target: {fileID: 1139382934293735920, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: cachedExecutionGroupIndex
+      value: 3
+      objectReference: {fileID: 0}
+    - target: {fileID: 1139382934293735920, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: latestValidExecutionGroupIndex
+      value: 3
+      objectReference: {fileID: 0}
+    - target: {fileID: 2408070633678223259, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: cachedExecutionGroupIndex
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 2408070633678223259, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: latestValidExecutionGroupIndex
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 2812678154164486699, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: cachedExecutionGroupIndex
+      value: 4
+      objectReference: {fileID: 0}
+    - target: {fileID: 2812678154164486699, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: latestValidExecutionGroupIndex
+      value: 4
+      objectReference: {fileID: 0}
+    - target: {fileID: 3737250421871908137, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: cachedExecutionGroupIndex
+      value: 5
+      objectReference: {fileID: 0}
+    - target: {fileID: 3737250421871908137, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: latestValidExecutionGroupIndex
+      value: 5
+      objectReference: {fileID: 0}
+    - target: {fileID: 5153209796552790637, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: cachedExecutionGroupIndex
+      value: 6
+      objectReference: {fileID: 0}
+    - target: {fileID: 5153209796552790637, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: latestValidExecutionGroupIndex
+      value: 6
+      objectReference: {fileID: 0}
+    - target: {fileID: 5331008442929913445, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: cachedExecutionGroupIndex
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 5331008442929913445, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: latestValidExecutionGroupIndex
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 5389427188667215143, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: cachedExecutionGroupIndex
+      value: 6
+      objectReference: {fileID: 0}
+    - target: {fileID: 5389427188667215143, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: latestValidExecutionGroupIndex
+      value: 6
+      objectReference: {fileID: 0}
+    - target: {fileID: 5697613524798284349, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: cachedExecutionGroupIndex
+      value: 6
+      objectReference: {fileID: 0}
+    - target: {fileID: 5697613524798284349, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: latestValidExecutionGroupIndex
+      value: 6
+      objectReference: {fileID: 0}
+    - target: {fileID: 6176275663070551054, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6176275663070551054, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6176275663070551054, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6176275663070551054, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 6176275663070551054, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6176275663070551054, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6176275663070551054, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6176275663070551054, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6176275663070551054, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6176275663070551054, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7023107692977201442, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: cachedExecutionGroupIndex
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 7023107692977201442, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: latestValidExecutionGroupIndex
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 7444073969522107409, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: cachedExecutionGroupIndex
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 7444073969522107409, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: latestValidExecutionGroupIndex
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 8779130922154515351, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: menuMode
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 8779130922154515351, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: dropParam
+      value: FX_Drop
+      objectReference: {fileID: 0}
+    - target: {fileID: 8779130922154515351, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: showParam
+      value: FX_Show
+      objectReference: {fileID: 0}
+    - target: {fileID: 8780938625657159313, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: cachedExecutionGroupIndex
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8780938625657159313, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: latestValidExecutionGroupIndex
+      value: 0
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 747291055597234298, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 6267068731806210947}
+  m_SourcePrefab: {fileID: 100100000, guid: 9fa2ab6e84382df4396cc1ce5abc9b69, type: 3}
+--- !u!1 &8293690690271005416 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 747291055597234298, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+    type: 3}
+  m_PrefabInstance: {fileID: 8739220769673994898}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &6267068731806210947
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8293690690271005416}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d9e94e501a2d4c95bff3d5601013d923, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  version: 3
+  unityVersion: 2022.3.22f1
+  vrcfuryVersion: 1.1341.0
+  somethingIsBroken: 0
+  config:
+    features: []
+  content:
+    rid: 7584485698049146882
+  references:
+    version: 2
+    RefIds:
+    - rid: 7584485698049146882
+      type: {class: FullController, ns: VF.Model.Feature, asm: VRCFury}
+      data:
+        version: 4
+        controllers:
+        - controller:
+            version: 1
+            fileID: 9100000
+            guid: 343ce6c88ffda5f488ea4a15349f0c12
+            id: 343ce6c88ffda5f488ea4a15349f0c12|Assets/VRCWorldDrop/Synced/Examples/FX
+              Controller/WorldDrop Example FX.controller
+            objRef: {fileID: 9100000, guid: 343ce6c88ffda5f488ea4a15349f0c12, type: 2}
+          type: 5
+        menus:
+        - menu:
+            version: 1
+            fileID: 11400000
+            guid: 581b683f70a221e499b8ffb0223e32e9
+            id: 581b683f70a221e499b8ffb0223e32e9|Assets/VRCWorldDrop/Synced/Examples/FX
+              Controller/WorldDrop Example Menu.asset
+            objRef: {fileID: 11400000, guid: 581b683f70a221e499b8ffb0223e32e9, type: 2}
+          prefix: World Drop (FX)
+        prms:
+        - parameters:
+            version: 1
+            fileID: 11400000
+            guid: 0b83bdc10a83ed243b1e3acb462e5a46
+            id: 0b83bdc10a83ed243b1e3acb462e5a46|Assets/VRCWorldDrop/Synced/Examples/FX
+              Controller/WorldDrop Example Parameters.asset
+            objRef: {fileID: 11400000, guid: 0b83bdc10a83ed243b1e3acb462e5a46, type: 2}
+        smoothedPrms: []
+        globalParams:
+        - FX_Drop
+        - FX_Show
+        allNonsyncedAreGlobal: 0
+        ignoreSaved: 0
+        toggleParam: 
+        rootObjOverride: {fileID: 0}
+        rootBindingsApplyToAvatar: 0
+        rewriteBindings: []
+        allowMissingAssets: 0
+        injectSpsDepthParam: 
+        injectSpsVelocityParam: 
+        controller:
+          version: 1
+          fileID: 0
+          guid: 
+          id: 
+          objRef: {fileID: 0}
+        menu:
+          version: 1
+          fileID: 0
+          guid: 
+          id: 
+          objRef: {fileID: 0}
+        parameters:
+          version: 1
+          fileID: 0
+          guid: 
+          id: 
+          objRef: {fileID: 0}
+        submenu: 
+        removePrefixes: []
+        addPrefix: 
+        useSecurityForToggle: 0

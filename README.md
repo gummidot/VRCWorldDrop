@@ -142,7 +142,7 @@ The default prefabs do not scale with your avatar. If you want objects to scale 
 Optional steps:
 
 6. Rename the prefab to match your object for better organization.
-7. To hide the object in your Scene, disable `Container/Item` (not `Container`).
+7. To choose whether the object starts visible in-game, use **Default Shown** in the inspector. To hide it in the Scene view, disable `Container/Item` (not `Container`).
 8. Set the object's lighting **Anchor Override** to itself so it lights with itself and not your avatar.
 
 ### Settings
@@ -153,6 +153,20 @@ For optional settings, drag a **`WorldDropSynced Settings`** object onto your av
 - **Anti-Cull Protection:** Off by default. After you hide and reshow a drop, remote users may not see it until they look at your avatar due to animator culling. Turn this on to prevent objects from being hidden when you reshow them. This uses an invisible object to extend your avatar bounds, so you will be **Very Poor** ranked. Leave it off unless you really need it.
 
 ![WorldDropSynced Settings](Doc/WorldDropSync_Settings.jpg)
+
+### Custom Menu Toggles
+
+To use your own menu toggles instead of the built-in Show/Drop ones (e.g. to integrate with your own asset):
+
+1. On the **World Drop Synced** component, expand **Use your own menu**.
+2. Set **Drop Param** / **Show Param** to your own avatar bool parameters. Setting either hides the built-in menu.
+3. Make those parameters **local**. The drops are synced internally.
+
+See the [VRCFury toggles example](Assets/VRCWorldDrop/Synced/Examples/VRCFury%20Toggles) and the [FX controller example](Assets/VRCWorldDrop/Synced/Examples/FX%20Controller).
+
+If distributing your own asset, include VRCWorldDrop as a dependency (either the `.unitypackage` or the `com.gummidot.vrc-world-drop` VCC package as a dependency).
+
+Note that synced drop limits will be shared between your asset and any other synced drops on the avatar (up to 16 per avatar with the same synced param budget).
 
 ### How it works
 
