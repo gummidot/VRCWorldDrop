@@ -1,3 +1,8 @@
+# 1.4.0
+
+- Add **Saved Across Sessions** for synced world drops to save dropped positions across world rejoins and avatar switches.
+- Fix synced world drops and custom menu toggles not working in some setups that combine them with other VRCFury toggles, such as a toggle with an FX Float action or one set to local only (thanks to Wolfy527 for help testing).
+
 # 1.3.0
 
 - Add a Default Shown option to make a synced drop start visible instead of hidden.

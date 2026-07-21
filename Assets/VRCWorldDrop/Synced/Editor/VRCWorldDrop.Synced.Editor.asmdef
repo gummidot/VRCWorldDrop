@@ -4,7 +4,8 @@
         "VRCWorldDrop.Synced.Runtime",
         "VRC.SDKBase",
         "VRC.SDK3A",
-        "VRC.SDKBase.Editor.BuildPipeline"
+        "VRC.SDKBase.Editor.BuildPipeline",
+        "com.vrcfury.api"
     ],
     "includePlatforms": [
         "Editor"

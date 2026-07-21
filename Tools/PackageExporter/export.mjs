@@ -1,17 +1,18 @@
 import { readFileSync, readdirSync, existsSync, createWriteStream } from 'node:fs';
 import { resolve, dirname, relative, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createGzip } from 'node:zlib';
 import { pack } from 'tar-stream';
 
-// Builds a VRCWorldDrop .unitypackage straight from disk, no Unity Editor needed.
+// Builds a .unitypackage straight from disk, no Unity Editor needed.
 // A .unitypackage is just a gzipped tar where every asset lives in a folder named
 // after its GUID, holding: asset (the file), asset.meta (the .meta), pathname
 // (where Unity drops it on import).
 //
 // Usage:
-//   node export.mjs            -> Assets/VRCWorldDrop/...        (legacy/import-into-Assets)
-//   node export.mjs --vpm      -> Packages/<pkg>/...             (VPM package layout)
+//   node export.mjs                  -> VRCWorldDrop, Assets/VRCWorldDrop/... (import-into-Assets)
+//   node export.mjs --vpm            -> VRCWorldDrop, Packages/<pkg>/...      (VPM package layout)
+//   node export.mjs --package=<name> -> another configured package (same flags apply)
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // Tools/PackageExporter -> repo root
@@ -19,36 +20,53 @@ const rootDir = resolve(__dirname, '..', '..');
 
 // --- Config -----------------------------------------------------------------
 
-const PACKAGE_NAME = 'com.gummidot.vrc-world-drop';
+// Per package: the source folder on disk doubles as the package root (its
+// package.json is the VPM manifest and the version source of truth). EXCLUDE
+// paths are relative to the source folder (POSIX separators) and drop the
+// entry itself or anything under it; an excluded asset's .meta goes with it.
+const PACKAGES = {
+  worlddrop: {
+    packageName: 'com.gummidot.vrc-world-drop',
+    sourceDir: join('Assets', 'VRCWorldDrop'),
+    outputBase: 'VRCWorldDrop',
+    exclude: [
+      'Synced/_Temp', // build-time scratch, regenerated every build by WdsBuildHook
+    ],
+  },
+};
 
-// Source folder on disk (relative to repo root) and the path it ships to.
-const SOURCE_DIR = join('Assets', 'VRCWorldDrop');
-const ASSETS_PREFIX = 'Assets/VRCWorldDrop';
-const VPM_PREFIX = `Packages/${PACKAGE_NAME}`;
-
-// Paths to drop, relative to SOURCE_DIR (POSIX separators). Matches the dir
-// itself or anything under it.
-const EXCLUDE = [
-  'Synced/_Temp', // build-time scratch, regenerated every build by WdsBuildHook
-];
+// Merge in any extra package configs kept alongside the exporter but out of the
+// published tooling. Absent in the public repo, so only worlddrop is known there.
+const extraConfigPath = resolve(__dirname, '..', 'packages.extra.mjs');
+if (existsSync(extraConfigPath)) {
+  const extra = await import(pathToFileURL(extraConfigPath).href);
+  Object.assign(PACKAGES, extra.default);
+}
 
 // --- Args -------------------------------------------------------------------
 
 const args = process.argv.slice(2);
 const target = args.includes('--vpm') || args.includes('--target=packages') ? 'packages' : 'assets';
+const pkgArg = (args.find((a) => a.startsWith('--package=')) ?? '--package=worlddrop').split('=')[1];
+const config = PACKAGES[pkgArg];
+if (!config) {
+  console.error(`Unknown --package=${pkgArg}. Known: ${Object.keys(PACKAGES).join(', ')}`);
+  process.exit(1);
+}
 
 // --- Derived ----------------------------------------------------------------
 
-const sourceDir = resolve(rootDir, SOURCE_DIR);
+const sourceDir = resolve(rootDir, config.sourceDir);
+const EXCLUDE = config.exclude;
 
 // Version comes from the VPM manifest, which lives inside the package folder.
 const pkg = JSON.parse(readFileSync(resolve(sourceDir, 'package.json'), 'utf8'));
 const version = pkg.version;
-const pathPrefix = target === 'packages' ? VPM_PREFIX : ASSETS_PREFIX;
-const outputName =
+const pathPrefix =
   target === 'packages'
-    ? `VRCWorldDrop_v${version}_VPM.unitypackage`
-    : `VRCWorldDrop_v${version}.unitypackage`;
+    ? `Packages/${config.packageName}`
+    : config.sourceDir.replace(/\\/g, '/');
+const outputName = `${config.outputBase}_v${version}${target === 'packages' ? '_VPM' : ''}.unitypackage`;
 const outputFile = resolve(rootDir, outputName);
 
 // --- Helpers ----------------------------------------------------------------
@@ -96,8 +114,8 @@ function addAsset(archive, { guid, fileContent, metaContent, unityPath }) {
 // --- Build ------------------------------------------------------------------
 
 async function buildPackage() {
-  console.log(`Building VRCWorldDrop v${version} (${target} layout)`);
-  console.log(`  Source:  ${SOURCE_DIR}`);
+  console.log(`Building ${config.outputBase} v${version} (${target} layout)`);
+  console.log(`  Source:  ${config.sourceDir}`);
   console.log(`  Ships to: ${pathPrefix}/`);
   console.log(`  Output:  ${relative(rootDir, outputFile)}`);
   console.log(`  Excludes: ${EXCLUDE.join(', ') || '(none)'}`);

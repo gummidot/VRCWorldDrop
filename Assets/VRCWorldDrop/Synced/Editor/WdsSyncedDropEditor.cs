@@ -27,8 +27,9 @@ namespace VRCWorldDrop.Synced {
 
             EditorGUILayout.HelpBox(
                 "Synced World Drop. Put your object under Container/Item. You can add up to " +
-                WdsBuildHook.MaxSlots + " of these per avatar. Copies are synced together " +
-                "automatically when you upload.\n\nTo move it, move the Reset Target object. Use Default " +
+                WdsBuildHook.MaxSlots + " of these per avatar. Duplicate this prefab for each object you " +
+                "want to drop: every copy is wired up automatically when you upload and syncs on its own." +
+                "\n\nTo move it, move the Reset Target object. Use Default " +
                 "Shown to choose whether it starts visible. To hide it in the Scene view, disable Container/Item.",
                 MessageType.Info);
 
@@ -66,14 +67,17 @@ namespace VRCWorldDrop.Synced {
             serializedObject.Update();
             var menuPath = serializedObject.FindProperty("menuPath");
             var defaultShown = serializedObject.FindProperty("defaultShown");
+            var persist = serializedObject.FindProperty("persist");
             var dropParam = serializedObject.FindProperty("dropParam");
             var showParam = serializedObject.FindProperty("showParam");
+            var saveParam = serializedObject.FindProperty("saveParam");
 
             // Common controls. Menu Path drives the built-in Show/Drop submenu; greyed out when a Drop/Show
             // Param is set (a host drives it, so no built-in menu is authored).
             using (new EditorGUI.DisabledScope(!string.IsNullOrWhiteSpace(dropParam.stringValue) || !string.IsNullOrWhiteSpace(showParam.stringValue)))
                 EditorGUILayout.PropertyField(menuPath, new GUIContent("Menu Path", menuPath.tooltip));
             EditorGUILayout.PropertyField(defaultShown, new GUIContent("Default Shown", defaultShown.tooltip));
+            EditorGUILayout.PropertyField(persist, new GUIContent("Saved Across Sessions", persist.tooltip));
 
             // Integration controls, tucked away so a normal drop stays a one-field setup. Open this to drive
             // the object from your own menu instead of the built-in toggles.
@@ -82,14 +86,34 @@ namespace VRCWorldDrop.Synced {
             if (_showAdvanced) {
                 using (new EditorGUI.IndentLevelScope()) {
                     EditorGUILayout.HelpBox(
-                        "To control this object from your own menu instead of the built-in Show/Drop toggles, enter " +
-                        "the avatar bool parameters your own toggles use (this hides the built-in menu). These " +
-                        "parameters should be local (the drop is synced internally).",
+                        "Drive this object from your own menu instead of the built-in Show/Drop toggles. Enter the " +
+                        "avatar parameters your toggles use (this hides the built-in menu); keep them local. A Save " +
+                        "Param drives the Save preference from your own toggle. If using VRCFury, mark the " +
+                        "parameters global.",
                         MessageType.None);
                     EditorGUILayout.PropertyField(dropParam, new GUIContent("Drop Param", dropParam.tooltip));
                     EditorGUILayout.PropertyField(showParam, new GUIContent("Show Param", showParam.tooltip));
+                    // The Save preference only exists on a persist slot, so the alias field only shows then.
+                    if (persist.boolValue)
+                        EditorGUILayout.PropertyField(saveParam, new GUIContent("Save Param", saveParam.tooltip));
                 }
             }
+
+            // Misconfiguration warnings, outside the foldout so they are visible even when it is closed.
+            bool hasDrop = !string.IsNullOrWhiteSpace(dropParam.stringValue);
+            bool hasShow = !string.IsNullOrWhiteSpace(showParam.stringValue);
+            bool hasSave = !string.IsNullOrWhiteSpace(saveParam.stringValue);
+            if (hasShow && !hasDrop)
+                EditorGUILayout.HelpBox(
+                    "Show Param is set without a Drop Param. Setting a Show Param hides the built-in menu, so " +
+                    "this object would have no Drop control at all and could never be dropped. Set a Drop Param " +
+                    "too, or clear the Show Param. The upload is blocked until this is fixed.",
+                    MessageType.Error);
+            if (hasSave && !persist.boolValue)
+                EditorGUILayout.HelpBox(
+                    "Save Param is set but Saved Across Sessions is off, so it does nothing. Turn " +
+                    "Saved Across Sessions on, or clear the Save Param.",
+                    MessageType.Warning);
             serializedObject.ApplyModifiedProperties();
         }
     }

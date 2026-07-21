@@ -1,18 +1,23 @@
-// Multi-object shared-mux generator. Produces N independently-droppable world-drop "slots" that
-// share ONE synced mux (WDM/Lane0..Lane(L-1) + WDM/Idx) via a cross-slot broadcast RING. The cascade and
-// rotation decode geometry already lives in each WorldDropSynced prefab's contact rig; this file
-// retags every instance per slot (no geometry is duplicated) and adds the slot parameterization and
-// the ring on top.
+// Generates the multi-object synced-drop animator. It produces N independently droppable world-drop
+// "slots" that share one small set of synced parameters (the "mux"): the broadcast lanes
+// WDM/Lane0..Lane(Lanes-1) plus a turn counter WDM/Idx, instead of paying a full synced pose per
+// object. Slots take turns broadcasting: each sends its pose channels over the shared lanes a few at
+// a time, then hands the mux to the next slot, around a ring. The measurement cascade and rotation
+// decode geometry already live in each WorldDropSynced prefab's contact rig; this file retags every
+// instance's contacts to its slot (no geometry is duplicated) and generates the per-slot animator
+// layers, parameters and menu on top.
 //
-// Idx packs (slot*MAXSTEP + step). base = i*MAXSTEP is a TOKEN the handoff lands on (no MuxLatch
-// keys on it; only the owner's WaitTurn reacts); steps are base+1..base+S. Keeping every
-// MuxLatch-keyed value owned by a Send state (which writes the lanes the same frame) prevents a torn
-// latch when Idx advances ahead of the lanes. One mux width (Lanes) serves both rotation families;
-// MAXSTEP leaves headroom over the token plus the per-family step count.
+// WDM/Idx says whose turn it is and which step of it, packed as slot*MAXSTEP + step. The bare value
+// slot*MAXSTEP is the handoff token: no receiver's MuxLatch layer keys on it (only the owning slot's
+// WaitTurn state reacts), so landing there passes the mux without latching anything. Send steps are
+// token+1..token+S, and every Idx value receivers DO latch on is written by a Send state that writes
+// the matching lanes in the same frame, so Idx can never advance ahead of the lane contents it
+// describes and a receiver never latches lanes from the wrong step. One lane width (Lanes) serves
+// both rotation families; MAXSTEP leaves headroom over the token plus the larger family's step count.
 //
-// Emit(...) is the reusable core: it populates an existing controller + expression params + menu for
-// a set of slots (each with an avatar-relative base path). WdsBuildHook wraps it at build time
-// against the real marker instances.
+// Emit(...) is the entry point: it populates an existing controller + expression params + menu for a
+// set of slots (each with an avatar-relative base path). WdsBuildHook calls it at build time against
+// the real marker instances.
 #if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
@@ -46,7 +51,7 @@ namespace VRCWorldDrop.Synced {
         // Channels broadcast per step; wider = fewer steps/object = faster reveal, at +8 synced bits/lane.
         // Set per build (by the build hook) from AutoLanes(objectCount, fast), then read by Emit. The
         // build hook sizes it to the object count so a low-count avatar pays a narrower backend; the
-        // value lands in [2, 8]. Default 4 here is a safe standalone fallback (matches old Slow).
+        // value lands in [2, 8]. Default 4 here is a safe standalone fallback.
         public static int Lanes = 4;
         // Optional fixed-width override the build hook honors (null = use AutoLanes); it applies
         // LanesOverride ?? AutoLanes(...). Set it to pin the lane width to a specific value.
@@ -55,11 +60,20 @@ namespace VRCWorldDrop.Synced {
         const float StepDwell = 0.3f;
 
         static readonly string[] Axes = { "X", "Y", "Z" };
-        public const string MUX = "WDM/";   // shared mux param prefix
+        // Every generated animator/expression parameter starts with this root: the shared mux params
+        // are "WDM/..." (MUX) and each slot's params are "WDM<slot>/..." (P). The build hook forces the
+        // whole "WDM*" namespace global so VRCFury preserves these names verbatim through its merge -
+        // otherwise it uniquifies them with a per-build "VF<n>_" prefix. VRCFury renames the contact
+        // receivers together with the controller, so decode would keep working; the cost of a non-global
+        // rename is name stability, which resets every saved (persist) drop and breaks host and OSC
+        // integrations that reference the generated names.
+        public const string ParamRoot = "WDM";
+        public const string MUX = ParamRoot + "/";   // shared mux param prefix
 
-        // Per-slot naming.
-        static string P(int slot) => "WDM" + slot + "/";
-        static string CP(int slot) => "WDM" + slot + "_";
+        // Per-slot naming. Both derive from ParamRoot so the namespace the build hook forces global
+        // (ParamRoot + "*") and the verify hook checks always covers the names emitted here.
+        static string P(int slot) => ParamRoot + slot + "/";
+        static string CP(int slot) => ParamRoot + slot + "_";
 
         /// <summary>One world-drop slot: a unique id, rotation family, the avatar-relative path to
         /// its root GameObject (where Container / _Sync live), the menu path for its Show/Drop
@@ -67,7 +81,15 @@ namespace VRCWorldDrop.Synced {
         /// "WorldDrops/Object N (Synced)"), whether it starts visible (defaultShown), and optional
         /// author-named drive params (dropAlias/showAlias, null when unset; setting either suppresses the
         /// built-in menu and lets a host drive this object's Drop/Show from its own UI).</summary>
-        public struct Slot { public int id; public bool fullRot; public string basePath; public string menuPath; public bool defaultShown; public string dropAlias; public string showAlias; }
+        /// <summary>persist: save the drop across sessions - the latched pose channels + a DropSaved
+        /// bool become saved LOCAL expression params, and the owner gains a reconstruct-on-load path that
+        /// re-broadcasts them. All persist machinery is generated only when set, so a persist=false slot's
+        /// output is identical to a build without the feature.</summary>
+        /// <summary>saveAlias (persist slots only): optional author-named Save preference param. When set,
+        /// a BridgeSave mirror copies it onto the slot's AutoSave, the author's param becomes the saved
+        /// store (AutoSave is registered unsaved), and any built-in Save control binds the alias. Unlike
+        /// dropAlias/showAlias it does not suppress the built-in menu.</summary>
+        public struct Slot { public int id; public bool fullRot; public string basePath; public string menuPath; public bool defaultShown; public bool persist; public string dropAlias; public string showAlias; public string saveAlias; }
 
         public static int Steps(bool fullRot) => (ChannelCount(fullRot) + Lanes - 1) / Lanes;
         static int ChannelCount(bool fullRot) => fullRot ? 15 : 11;
@@ -77,7 +99,7 @@ namespace VRCWorldDrop.Synced {
         // the marker inspector and the settings inspector all size cost through here so the displayed
         // and shipped backends never drift. Sized against the worst-case (full-rotation, 15-channel)
         // reveal, so a Y-only or mixed avatar only ever reveals faster. Slow picks the narrowest width;
-        // Fast is ~2x wider (the reveal-speed dial), capped so a high-count avatar matches the old flat 4/8.
+        // Fast is ~2x wider (the reveal-speed dial), capped so a high-count avatar gets the full 4/8 widths.
         //   objects   Slow lanes (backend bits)   Fast lanes (backend bits)
         //    1-2          2 (24)                      4 (40)
         //    3-5          3 (32)                      6 (56)
@@ -125,8 +147,9 @@ namespace VRCWorldDrop.Synced {
         // The measurement-rig contact GameObjects (leaf nodes, one contact each), relative to a slot's
         // base path. These paths must match the node names in the shipped WorldDropSynced (*) prefabs;
         // renaming a node there means updating the matching string here. Gated active only during the
-        // encode window so idle/dropped objects carry no live contacts and the broadphase never
-        // saturates. Frames (CoarseFrame/FineFrame/ForwardFrame/DecodeFrame) are deliberately excluded -
+        // encode window so idle and already-dropped objects carry no live contacts; contacts left
+        // always-on would pile up at the shared world-origin anchor and stop registering (see the Rig
+        // layer note in SlotLayers). Frames (CoarseFrame/FineFrame/ForwardFrame/DecodeFrame) are deliberately excluded -
         // they stay live for decode/display on every client.
         static string[] ContactGOs(bool fullRot) {
             var l = new List<string> {
@@ -183,6 +206,7 @@ namespace VRCWorldDrop.Synced {
         class SlotClips {
             public AnimationClip Buffer1F, Buffer005, Buffer03;
             public AnimationClip LocalIdle, LocalDropped, RemoteIdle, RemoteDropped, RemoteFrozen, ShowOn, ShowOff;
+            public AnimationClip RestoreDwell;   // persist only: decode-follow display with a real dwell length
             public AnimationClip RigOn, RigOff;   // gate the measurement contacts to the encode window
             public AnimationClip[] SuperMin = new AnimationClip[3], SuperMax = new AnimationClip[3];
             public AnimationClip[] CellMin = new AnimationClip[3], CellMax = new AnimationClip[3];
@@ -230,6 +254,9 @@ namespace VRCWorldDrop.Synced {
                 // re-captures it, otherwise the freeze latches the previous (stale) DecodeFrame and gates itself.
                 c.RemoteDropped = Display(cp + "RemoteDropped", 0, 0, 1, fr);
                 c.RemoteFrozen = Display(cp + "RemoteFrozen", 1, 0, 1, fr);
+                // Persist: the owner's restore states dwell on the decode-follow pose before freezing, and an
+                // exitTime dwell needs a clip with real length (the 1-frame RemoteDropped would exit ~instantly).
+                if (slot.persist) c.RestoreDwell = Display(cp + "RestoreDwell", 0, 0, 1, StepDwell);
                 c.ShowOn = NewClip(cp + "ShowOn"); AddCurve(c.ShowOn, B + "/Container/Item", typeof(GameObject), "m_IsActive", 1, fr);
                 c.ShowOff = NewClip(cp + "ShowOff"); AddCurve(c.ShowOff, B + "/Container/Item", typeof(GameObject), "m_IsActive", 0, fr);
                 c.RigOn = NewClip(cp + "RigOn"); c.RigOff = NewClip(cp + "RigOff");
@@ -310,6 +337,7 @@ namespace VRCWorldDrop.Synced {
         static AnimatorCondition Eq(string p, float v) => new AnimatorCondition { mode = AnimatorConditionMode.Equals, parameter = p, threshold = v };
         static AnimatorCondition Gt(string p, float v) => new AnimatorCondition { mode = AnimatorConditionMode.Greater, parameter = p, threshold = v };
         static AnimatorCondition Lt(string p, float v) => new AnimatorCondition { mode = AnimatorConditionMode.Less, parameter = p, threshold = v };
+
         static BlendTree Tree1D(AnimatorController ctrl, string name, string bp, Motion lo, Motion hi, float tLo, float tHi) {
             var bt = new BlendTree { name = name, blendType = BlendTreeType.Simple1D, blendParameter = bp, useAutomaticThresholds = false, hideFlags = HideFlags.HideInHierarchy };
             AssetDatabase.AddObjectToAsset(bt, ctrl);
@@ -330,9 +358,18 @@ namespace VRCWorldDrop.Synced {
             foreach (var slot in slots) {
                 string p = P(slot.id);
                 EnsureBool(ctrl, p + "Drop"); EnsureBool(ctrl, p + "Show", slot.defaultShown); EnsureBool(ctrl, p + "Live"); EnsureInt(ctrl, p + "Seen"); EnsureBool(ctrl, p + "RigOn"); EnsureBool(ctrl, p + "Frozen");
+                // Persist: DropSaved is the internal saved "a drop is stored / arm restore" flag; AutoSave is
+                // the sticky user preference (saved, menu-driven) that gates whether a drop saves - its animator
+                // default MUST be true so an init-skew frame cannot fire the forget watcher and wipe a legit
+                // saved drop before restore reads it. Latched marks "the cascade ran this session" (animator-only).
+                if (slot.persist) { EnsureBool(ctrl, p + "DropSaved"); EnsureBool(ctrl, p + "Latched"); EnsureBool(ctrl, p + "AutoSave", true); }
                 // Author-named drive params (local; the bridge layer mirrors them onto WDM<slot>/Drop|Show on the owner).
                 if (slot.dropAlias != null) EnsureBool(ctrl, slot.dropAlias);
                 if (slot.showAlias != null) EnsureBool(ctrl, slot.showAlias, slot.defaultShown);
+                // Save alias default ON is best-effort only: the host's own declaration usually wins the
+                // merged animator default, so the Save watcher's Live/Latched gate (below) is what makes a
+                // hostile default non-destructive, not this.
+                if (slot.saveAlias != null) EnsureBool(ctrl, slot.saveAlias, true);
                 foreach (var a in Axes) { EnsureInt(ctrl, p + "Super" + a); EnsureFloat(ctrl, p + "Super" + a + "F"); EnsureInt(ctrl, p + "Cell" + a); EnsureFloat(ctrl, p + "Cell" + a + "F"); EnsureFloat(ctrl, p + "Fine" + a); EnsureFloat(ctrl, p + "RawS" + a); EnsureFloat(ctrl, p + "RawC" + a); EnsureFloat(ctrl, p + "RawF" + a); }
                 EnsureFloat(ctrl, p + "ForwardX"); EnsureFloat(ctrl, p + "ForwardZ"); EnsureFloat(ctrl, p + "RawFwdX"); EnsureFloat(ctrl, p + "RawFwdZ");
                 if (slot.fullRot) { EnsureFloat(ctrl, p + "ForwardY"); EnsureFloat(ctrl, p + "RawFwdY"); foreach (var a in Axes) { EnsureFloat(ctrl, p + "Up" + a); EnsureFloat(ctrl, p + "RawU" + a); } }
@@ -348,7 +385,11 @@ namespace VRCWorldDrop.Synced {
                 AddDriver(ctrl, off, false, Set(MUX + "AnyDrop", 0));
                 AddDriver(ctrl, on, false, Set(MUX + "AnyDrop", 1));
                 foreach (var slot in slots) Any(sm, on, If(P(slot.id) + "Drop"));
-                Cond(on.AddTransition(off), slots.Select(s => IfNot(P(s.id) + "Drop")).ToArray());
+                // Persist: a restored slot broadcasts with Drop=0, and the ring's idle-slot Skip states only
+                // advance the token while AnyDrop is set - without this the ring stalls at n>1 and a restored
+                // drop never reaches Live/remotes. DropSaved counts as "dropped" for the ring.
+                foreach (var slot in slots) if (slot.persist) Any(sm, on, If(P(slot.id) + "DropSaved"));
+                Cond(on.AddTransition(off), slots.Select(s => IfNot(P(s.id) + "Drop")).Concat(slots.Where(s => s.persist).Select(s => IfNot(P(s.id) + "DropSaved"))).ToArray());
             }
 
             for (int si = 0; si < n; si++) { SlotLayers(ctrl, slots[si], n, cl[si], added); }
@@ -358,10 +399,44 @@ namespace VRCWorldDrop.Synced {
             ctrl.layers = layers;
             EditorUtility.SetDirty(ctrl);
             log.AppendLine("Controller layers added: " + added.Count);
+            AuditConditionParams(ctrl, added, log);
+        }
+
+        // Every condition we emit must reference a parameter we declared on this controller. A condition on
+        // an undeclared parameter is not an error Unity reports: after VRCFury's merge its RemoveWrongParamTypes
+        // replaces it with an always-false condition, so the layer sits inert forever. Fail loudly at build
+        // instead. Condition MODES are deliberately NOT checked: this controller is handed to VRCFury before
+        // its merge, which coerces every condition to its parameter's final merged type (so IsLocal floated by
+        // a local-only action, or a host drive param that ends up an int/float, has its bool-mode conditions
+        // rewritten automatically during UpgradeWrongParamTypes).
+        static void AuditConditionParams(AnimatorController ctrl, HashSet<string> added, StringBuilder log) {
+            var names = new HashSet<string>(ctrl.parameters.Select(p => p.name));
+            foreach (var layer in ctrl.layers.Where(l => added.Contains(l.name))) {
+                foreach (var sm in AllStateMachines(layer.stateMachine)) {
+                    var transitions = sm.anyStateTransitions.Cast<AnimatorTransitionBase>()
+                        .Concat(sm.states.SelectMany(s => s.state.transitions.Cast<AnimatorTransitionBase>()));
+                    foreach (var t in transitions)
+                        foreach (var cond in t.conditions)
+                            if (!names.Contains(cond.parameter)) {
+                                string msg = "[WorldDropSynced] something went wrong setting up the synced drops on this avatar, " +
+                                    "so one of them may not work in-game. Please report it and include this line: layer '" +
+                                    layer.name + "', parameter '" + cond.parameter + "', condition " + cond.mode + ".";
+                                log.AppendLine(msg);
+                                Debug.LogError(msg);
+                            }
+                }
+            }
+        }
+
+        static IEnumerable<AnimatorStateMachine> AllStateMachines(AnimatorStateMachine sm) {
+            yield return sm;
+            foreach (var child in sm.stateMachines)
+                foreach (var nested in AllStateMachines(child.stateMachine))
+                    yield return nested;
         }
 
         static void SlotLayers(AnimatorController ctrl, Slot slot, int n, SlotClips c, HashSet<string> added) {
-            int i = slot.id; bool fullRot = slot.fullRot; int steps = Steps(fullRot);
+            int i = slot.id; bool fullRot = slot.fullRot; bool persist = slot.persist; int steps = Steps(fullRot);
             string p = P(i), cp = CP(i);
             // Slot ids are dense 0..n-1, so the next slot's base is just (i+1)%n.
             int baseIdx = i * MAXSTEP, next = ((i + 1) % n) * MAXSTEP;
@@ -384,7 +459,17 @@ namespace VRCWorldDrop.Synced {
                 AddDriver(ctrl, m0, false, copies()); AddDriver(ctrl, m1, false, copies());
                 ExitT(m0, m1); ExitT(m1, m0);
                 Cond(off.AddTransition(m0), If(p + "Drop"), IfNot(p + "Frozen"));
-                Any(sm, off, IfNot(p + "Drop"));
+                if (persist) {
+                    // A restored drop decodes with Drop=0: on a remote the signal is Live (the owner's restored
+                    // broadcast), on the owner it is DropSaved (available immediately, BEFORE Live - the ring
+                    // takes a cycle to set Live, and the owner's restore display must not freeze an un-decoded
+                    // pose while waiting for it).
+                    Cond(off.AddTransition(m0), If(p + "Live"), IfNot(p + "Frozen"));
+                    Cond(off.AddTransition(m0), If(p + "DropSaved"), IfNot(p + "Frozen"));
+                    Any(sm, off, IfNot(p + "Drop"), IfNot(p + "Live"), IfNot(p + "DropSaved"));
+                } else {
+                    Any(sm, off, IfNot(p + "Drop"));
+                }
                 Any(sm, off, If(p + "Frozen"));
             }
 
@@ -405,13 +490,33 @@ namespace VRCWorldDrop.Synced {
                 sm.defaultState = idle;
 
                 AddDriver(ctrl, idle, true, Set(p + "Live", 0), Set(p + "RigOn", 0));
-                AddDriver(ctrl, ss, true, Set(p + "RigOn", 1));    // contacts on for the settle/latch cascade
+                // Persist: Latched is set on CASCADE ENTRY (not at latch completion) - the redrop-from-restore
+                // AnyState below keys on !Latched, and setting it any later would let that AnyState re-fire from
+                // every subsequent cascade state (canTransitionToSelf only blocks self), looping the cascade
+                // forever. DropSaved (the internal "a drop is stored" flag) is CLEARED here at cascade entry
+                // and re-set at LatchFine as Copy(AutoSave -> DropSaved) - so mid-cascade DropSaved=0 (quitting in
+                // the ~1s cascade window then leaves no torn half-overwritten pose to restore), and the completed
+                // drop is saved only if the AutoSave preference is on. Idle deliberately does NOT touch
+                // DropSaved: its entry driver fires at session init, before the restore path could read the saved
+                // value. WaitTurn does not write DropSaved: it re-enters every ring cycle, so the set belongs
+                // on the once-per-drop LatchFine instead. Full clear on a real undrop still happens in the Clear state below.
+                // Set(Live,0) on cascade entry: redundant after Idle (which already zeroed it), but a REDROP
+                // from a restored broadcast enters here directly without passing Idle - the Live dip is what
+                // sends remotes back to RemoteIdle (clear Frozen, reset Seen) so they re-reveal the NEW pose
+                // instead of staying frozen on the old one.
+                if (persist) AddDriver(ctrl, ss, true, Set(p + "RigOn", 1), Set(p + "Latched", 1), Set(p + "Live", 0), Set(p + "DropSaved", 0));
+                else AddDriver(ctrl, ss, true, Set(p + "RigOn", 1));    // contacts on for the settle/latch cascade
                 AddDriver(ctrl, wait, true, Set(p + "RigOn", 0));  // pose latched; contacts off (broadcast reads latched params)
                 AddDriver(ctrl, lsup, true, Axes.Select(a => Copy(p + "RawS" + a, p + "Super" + a, true, 0, 1, 0, 255)).ToArray());
                 AddDriver(ctrl, lc, true, Axes.Select(a => Copy(p + "RawC" + a, p + "Cell" + a, true, 0, 1, 0, 255)).ToArray());
                 var fine = Axes.Select(a => Copy(p + "RawF" + a, p + "Fine" + a, true, 0, 1, -1, 1)).Concat(new[] { Copy(p + "RawFwdX", p + "ForwardX", true, 0, 1, -1, 1), Copy(p + "RawFwdZ", p + "ForwardZ", true, 0, 1, -1, 1) });
                 if (fullRot) fine = fine.Append(Copy(p + "RawFwdY", p + "ForwardY", true, 0, 1, -1, 1)).Concat(Axes.Select(a => Copy(p + "RawU" + a, p + "Up" + a, true, 0, 1, -1, 1)));
-                AddDriver(ctrl, lf, true, fine.ToArray());
+                // Persist: commit the save as the LAST op - every channel above is written first, then DropSaved is
+                // set from the AutoSave preference within this one atomic driver evaluation (torn-free). AutoSave
+                // off -> Copy writes 0 -> the drop is placed this session but not saved for the next.
+                var lfOps = fine.ToList();
+                if (persist) lfOps.Add(Copy(p + "AutoSave", p + "DropSaved"));
+                AddDriver(ctrl, lf, true, lfOps.ToArray());
                 AddDriver(ctrl, skip, true, Set(MUX + "Idx", next));
                 AddDriver(ctrl, handoff, true, Set(MUX + "Idx", next));
 
@@ -437,20 +542,79 @@ namespace VRCWorldDrop.Synced {
                 // below) leaving Idx at a Send value (base+1+k); if every slot then undrops, AnyDrop=0
                 // so no idle->skip can advance it, and Idx stays frozen there. Re-dropping that slot
                 // returns it to `wait`, where an exact `Eq(Idx,base)` would never match the frozen
-                // value -> permanent stall, Live never re-arms, remotes never re-reveal (verified in
-                // playmode). A range match re-broadcasts cleanly from Send0 (which resets
+                // value: a permanent stall where Live never re-arms and remotes never re-reveal.
+                // A range match re-broadcasts cleanly from Send0 (which resets
                 // Idx=base+1) regardless of where it froze; ranges are disjoint (base_j..base_j+MAXSTEP)
                 // so this only ever fires on this slot's turn. Together with the undropped-slot skips
                 // the ring self-heals from any frozen Idx.
                 Cond(wait.AddTransition(send0), Gt(MUX + "Idx", baseIdx - 1), Lt(MUX + "Idx", baseIdx + MAXSTEP));
                 ExitT(prev, handoff); ExitT(handoff, wait);
-                Any(sm, idle, If("IsLocal"), IfNot(p + "Drop"));
+                if (persist) {
+                    // Restored broadcast: the saved channels ARE the pose, so enter the ring directly - never
+                    // re-measure on restore (re-latching would re-encode with fresh contact noise every session,
+                    // a random-walk drift, and would race the display's own convergence).
+                    Cond(idle.AddTransition(wait), If("IsLocal"), IfNot(p + "Drop"), If(p + "DropSaved"));
+                    // Redrop while broadcasting restored channels: the ring would keep sending the OLD pose
+                    // (nothing re-latches), so route back through the cascade. Only fires when this session
+                    // never latched (restored broadcast); a normal drop sets Latched at SettleSuper entry.
+                    Any(sm, ss, If("IsLocal"), If(p + "Drop"), IfNot(p + "Latched"));
+                    // Undrop after a real drop this session clears the save; "Saved" toggled off during a
+                    // restored broadcast (never latched) just stops it. Order matters: Clear first - a
+                    // mid-cascade undrop can have Latched=1 with DropSaved still 0/1, and Clear also resets
+                    // Live/RigOn/Latched before handing back to Idle.
+                    var clear = St(sm, "Clear", c.Buffer005, new Vector3(-50, 100, 0));
+                    AddDriver(ctrl, clear, true, Set(p + "DropSaved", 0), Set(p + "Live", 0), Set(p + "RigOn", 0), Set(p + "Latched", 0));
+                    ExitT(clear, idle);
+                    Any(sm, clear, If("IsLocal"), IfNot(p + "Drop"), If(p + "Latched"));
+                    Any(sm, idle, If("IsLocal"), IfNot(p + "Drop"), IfNot(p + "DropSaved"));
+                } else {
+                    Any(sm, idle, If("IsLocal"), IfNot(p + "Drop"));
+                }
+            }
+
+            // Save (owner-only watcher; persist only): keep DropSaved (the internal "a drop is stored" flag) in
+            // sync with the sticky AutoSave preference WITHOUT touching Encode/Display - an AnyState there would
+            // yank the broadcast ring or the display state. Watch is the default and carries NO driver: its entry
+            // fires at session init, before VRChat applies the saved expression values, so a driver there would
+            // wipe a stored drop before the restore path reads it. Both edges self-disarm
+            // (their driver clears the condition that triggered them) and are mutually exclusive on AutoSave, so no flicker.
+            if (persist) {
+                AddLayer(cp + "Save");
+                var sm = ctrl.layers[ctrl.layers.Length - 1].stateMachine;
+                var watch = St(sm, "Watch", c.Buffer1F, new Vector3(200, 0, 0));
+                var forget = St(sm, "Forget", c.Buffer005, new Vector3(450, 0, 0));
+                var resave = St(sm, "Resave", c.Buffer005, new Vector3(450, 120, 0));
+                sm.defaultState = watch;
+                AddDriver(ctrl, forget, true, Set(p + "DropSaved", 0));
+                AddDriver(ctrl, resave, true, Set(p + "DropSaved", 1));
+                // Save toggled OFF -> forget the stored save. The object stays placed (on a restored slot the
+                // menu-sync drive holds Drop = 1, built-in or aliased) and only the cross-session save is
+                // forgotten - recall is then a Drop tap-off.
+                // The forget only fires on positive evidence that this session's rig actually ran: Live (raised
+                // by the owner's Send-last, for both fresh drops and restores) or Latched (raised at cascade
+                // entry, and at the restore freeze). Both are 0 at avatar init, so no
+                // init-ordering skew - e.g. a host Save alias whose animator default is false being read before
+                // VRChat applies the saved expression values - can wipe a stored drop before the restore path
+                // consumes it. Any real DropSaved=1 raises one of the two within a ring cycle, so a Save-off is
+                // honored at most a beat late, never lost.
+                Cond(watch.AddTransition(forget), If("IsLocal"), IfNot(p + "AutoSave"), If(p + "DropSaved"), If(p + "Live"));
+                Cond(watch.AddTransition(forget), If("IsLocal"), IfNot(p + "AutoSave"), If(p + "DropSaved"), If(p + "Latched"));
+                // Save toggled ON during a live drop -> (re)store the current pose. Gate on Live (raised only by
+                // Send-last, after a full latch + broadcast cycle), NOT Latched (= "cascade started") which would
+                // fire mid-cascade and persist a torn pose.
+                Cond(watch.AddTransition(resave), If("IsLocal"), If(p + "AutoSave"), If(p + "Drop"), If(p + "Live"), IfNot(p + "DropSaved"));
+                ExitT(forget, watch);
+                ExitT(resave, watch);
             }
 
             // Rig (all clients): gate the measurement contacts to the owner's encode window. RigOn is
             // set only by the owner-only Encode layer, so on remotes it stays 0 and the contacts stay
-            // off (they are localOnly anyway). Idle and already-dropped objects carry no live contacts,
-            // so the broadphase never saturates from clustered or numerous objects.
+            // off (they are localOnly anyway). Idle and already-dropped objects therefore carry no live
+            // contacts. That matters because every slot's measurement contacts anchor near the world
+            // origin, and each VRChat contact shape considers only its 32 nearest overlapping shapes,
+            // with tag matching run after that cut: many objects' contacts left live at the same spot
+            // can crowd a receiver's own sender out of its nearest-32 set, and drops would stop
+            // measuring reliably (even one drop among many).
             AddLayer(cp + "Rig");
             {
                 var sm = ctrl.layers[ctrl.layers.Length - 1].stateMachine;
@@ -487,8 +651,49 @@ namespace VRCWorldDrop.Synced {
                 Any(sm, rIdle, IfNot("IsLocal"), Lt(p + "Seen", steps));
                 Any(sm, rDrop, IfNot("IsLocal"), If(p + "Live"), Gt(p + "Seen", steps - 1), Lt(p + "Seen", 2 * steps), IfNot(p + "Frozen"));
                 Any(sm, rFrozen, IfNot("IsLocal"), If(p + "Live"), Gt(p + "Seen", 2 * steps - 1), IfNot(p + "Frozen"));
-                Any(sm, lIdle, If("IsLocal"), IfNot(p + "Drop"));
-                Any(sm, lDrop, If("IsLocal"), If(p + "Drop"));
+                if (persist) {
+                    // Owner restore: with a saved drop pending (DropSaved, no menu Drop yet), follow the decode
+                    // (the channels were restored from disk) and freeze only once the owner's own broadcast ring
+                    // has completed two full cycles (Seen >= 2*steps - the SAME convergence gate the remote
+                    // freeze uses; the persist MuxReveal counts Seen on Live, and the restored owner is Live).
+                    // A fixed time dwell can fire before the reconstruction has caught up at low frame rates,
+                    // capturing a mid-slide pose tens of cm / over a hundred degrees off - gate on convergence
+                    // (Seen), never on a dwell. Frozen blocks
+                    // re-entry after the capture; canTransitionToSelf=false blocks re-entry during the wait.
+                    // Because the owner now sets Frozen, LocalIdle and LocalDropped must clear it: a redrop with
+                    // Frozen stuck 1 would keep the Decode/Mirror gates off and the cascade would measure garbage.
+                    AddDriver(ctrl, lIdle, false, Set(p + "Frozen", 0));
+                    AddDriver(ctrl, lDrop, false, Set(p + "Frozen", 0));
+                    var lRestore = St(sm, "LocalRestore", c.RestoreDwell, new Vector3(450, 200, 0));
+                    var lRestoreFrozen = St(sm, "LocalRestoreFrozen", c.RemoteFrozen, new Vector3(450, 300, 0));
+                    AddDriver(ctrl, lRestoreFrozen, false, Set(p + "Frozen", 1));
+                    // Menu-sync: the param the user's Drop toggle binds (the synced WDM<slot>/Drop for the
+                    // built-in menu, the host's drive param on an alias slot) is not a saved param and so
+                    // rejoins at 0 - it would read OFF over a visibly restored object, and the first tap would
+                    // be a redrop-at-body instead of the intuitive undrop. Once the restore has converged and
+                    // frozen, drive it to 1 so the toggle reflects the placed object; a single tap OFF then
+                    // rides the existing Clear path below (keyed on !Drop && Latched) to recall + forget with
+                    // no teleport. Latched=1 goes in the SAME driver so Encode never sees Drop=1 with Latched=0
+                    // and fires the redrop cascade at SettleSuper. An alias slot sets the host param and the
+                    // internal Drop together, also in that one driver: the bridge copies the host param onto
+                    // Drop a frame later, so driving only the host param would leave a frame of !Drop && Latched,
+                    // which the Clear path reads as an undrop and it wipes the save mid-restore. Driving Drop=1
+                    // while Frozen=1 parks the machine in this state (no Display state fires on that pair -
+                    // LocalDropped is gated on !Frozen) until the user taps the toggle off. The driven value 1
+                    // reads as on for a Bool, Int, or Float host param (menu toggles set 1 for all three).
+                    // localOnly: Drop is owner-authoritative, host drive params are local by contract, and this
+                    // state is only reached by the owner.
+                    if (slot.dropAlias == null) AddDriver(ctrl, lRestoreFrozen, true, Set(p + "Drop", 1), Set(p + "Latched", 1));
+                    else AddDriver(ctrl, lRestoreFrozen, true, Set(slot.dropAlias, 1), Set(p + "Drop", 1), Set(p + "Latched", 1));
+                    Cond(lRestore.AddTransition(lRestoreFrozen), Gt(p + "Seen", 2 * steps - 1));
+                    Any(sm, lIdle, If("IsLocal"), IfNot(p + "Drop"), IfNot(p + "DropSaved"));
+                    Any(sm, lRestore, If("IsLocal"), IfNot(p + "Drop"), If(p + "DropSaved"), IfNot(p + "Frozen"));
+                    // Gating LocalDropped on !Frozen is behavior-preserving for normal drops (the non-persist owner never sets Frozen).
+                    Any(sm, lDrop, If("IsLocal"), If(p + "Drop"), IfNot(p + "Frozen"));
+                } else {
+                    Any(sm, lIdle, If("IsLocal"), IfNot(p + "Drop"));
+                    Any(sm, lDrop, If("IsLocal"), If(p + "Drop"));
+                }
             }
 
             // Decode (direct blend tree, gated to the reconstruction window)
@@ -516,16 +721,26 @@ namespace VRCWorldDrop.Synced {
                 // encode cascade needs). Once a remote freezes, the Container is a static FreezeToWorld capture
                 // that ignores the decoded frame; idle/undropped objects never read it. So steady-state decode
                 // cost falls to ~0 except for objects mid-reveal. In the Off state the cascade frames' last
-                // PositionOffset just holds (verified: gating off then perturbing a decode input does not move the
+                // PositionOffset just holds (gating off and then changing a decode input does not move the
                 // frame), and it is unread either way - a frozen Container ignores source1, an idle one follows
-                // source0 - so gating it off cannot disturb the displayed pose. Verified in playmode: freeze +
-                // gate-off holds the frozen pose (~1.5cm vs owner), and a redrop re-enables decode and
-                // reconstructs the new pose (~0.9cm).
+                // source0 - so gating it off cannot disturb the displayed pose. In practice a frozen pose holds
+                // within ~1.5cm of the owner's, and a redrop re-enables decode and reconstructs the new pose
+                // to about a centimeter.
                 var off = St(sm, "Off", null, new Vector3(0, 0, 0));
                 var decode = St(sm, "Decode", root, new Vector3(200, 0, 0));
                 sm.defaultState = off;
                 Cond(off.AddTransition(decode), If(p + "Drop"), IfNot(p + "Frozen"));
-                Any(sm, off, IfNot(p + "Drop"));
+                if (persist) {
+                    // A restored drop reconstructs with Drop=0: Live gates the remote's decode window, DropSaved
+                    // the owner's (available before Live - the ring takes a cycle to raise it, and the owner's
+                    // restore display dwells must run against a live decode). Note the persist owner DOES set
+                    // Frozen (LocalRestoreFrozen), unlike the non-persist owner; LocalIdle/LocalDropped clear it.
+                    Cond(off.AddTransition(decode), If(p + "Live"), IfNot(p + "Frozen"));
+                    Cond(off.AddTransition(decode), If(p + "DropSaved"), IfNot(p + "Frozen"));
+                    Any(sm, off, IfNot(p + "Drop"), IfNot(p + "Live"), IfNot(p + "DropSaved"));
+                } else {
+                    Any(sm, off, IfNot(p + "Drop"));
+                }
                 Any(sm, off, If(p + "Frozen"));
             }
 
@@ -538,11 +753,17 @@ namespace VRCWorldDrop.Synced {
                 sm.defaultState = off;
                 Action<AnimatorState, AnimatorState, AnimatorCondition[]> tr = (f, t, cs) => Cond(f.AddTransition(t), cs);
                 tr(off, on, new[] { If(p + "Show"), If("IsLocal") });
-                tr(off, on, new[] { If(p + "Show"), IfNot(p + "Drop") });
+                // Persist: the "shown while undropped" path (rest-follow) must not fire for a restored drop
+                // (Drop=0 but Live=1) - a late-joining remote would show the object following the avatar for
+                // the whole reveal window and then teleport it, exactly the artifact reveal gating prevents.
+                if (persist) tr(off, on, new[] { If(p + "Show"), IfNot(p + "Drop"), IfNot(p + "Live") });
+                else tr(off, on, new[] { If(p + "Show"), IfNot(p + "Drop") });
                 tr(off, on, new[] { If(p + "Show"), If(p + "Live"), Gt(p + "Seen", steps - 1) });
                 tr(on, off, new[] { IfNot(p + "Show") });
                 tr(on, off, new[] { IfNot("IsLocal"), If(p + "Drop"), IfNot(p + "Live") });
                 tr(on, off, new[] { IfNot("IsLocal"), If(p + "Drop"), Lt(p + "Seen", steps) });
+                // Persist: hide a mid-session restore (owner re-arms "Saved") while it reveals on remotes.
+                if (persist) tr(on, off, new[] { IfNot("IsLocal"), IfNot(p + "Drop"), If(p + "Live"), Lt(p + "Seen", steps) });
             }
 
             // MuxLatch (remote): copy lanes -> channels when Idx == baseIdx+1+k
@@ -572,9 +793,19 @@ namespace VRCWorldDrop.Synced {
                     ring[k] = St(sm, "R" + k, c.Buffer1F, new Vector3(450, k * 55, 0));
                     AddDriver(ctrl, ring[k], false, AddTo(p + "Seen", 1));
                     Cond(wait.AddTransition(ring[k]), If(p + "Drop"), Eq(MUX + "Idx", baseIdx + 1 + k));
+                    // Persist: a restored drop broadcasts with Drop=0, so remotes must also count Seen on Live
+                    // (the synced flag the restored owner raises) or they never reveal it.
+                    if (persist) Cond(wait.AddTransition(ring[k]), If(p + "Live"), Eq(MUX + "Idx", baseIdx + 1 + k));
                 }
                 for (int k = 0; k < steps; k++) Cond(ring[k].AddTransition(ring[(k + 1) % steps]), Eq(MUX + "Idx", baseIdx + 1 + ((k + 1) % steps)));
-                Any(sm, wait, IfNot(p + "Drop"));
+                // Persist: reset purely on !Live. Live is the broadcast-validity signal (owner drivers only:
+                // Idle, the cascade-entry dip, Send-last), so any Live=0 window means "channels in flight are
+                // not a complete pose - restart the count". Keying the reset on Drop misses the redrop-from-
+                // restore dip (Drop is already 1), leaving Seen stale >= 2*steps, and the remote freeze then
+                // fires the instant Live returns - capturing a mid-flight garbage pose, which leaves the
+                // object frozen at the rest-follow spot.
+                if (persist) Any(sm, wait, IfNot(p + "Live"));
+                else Any(sm, wait, IfNot(p + "Drop"));
             }
 
             // Bridge (owner): when this object names an author drive param, mirror that local param onto the
@@ -592,18 +823,28 @@ namespace VRCWorldDrop.Synced {
                 sm.defaultState = defOn ? on : off;
                 AddDriver(ctrl, off, true, Set(target, 0));
                 AddDriver(ctrl, on, true, Set(target, 1));
+                // The host owns `src` and picks its type; we declare it Bool and read it with If/IfNot.
+                // This controller is handed to VRCFury before its merge, so if the host's param ends up a
+                // float or int (e.g. a toggle that also drives an FX float), VRCFury rewrites these bool-mode
+                // conditions to the matching comparison during UpgradeWrongParamTypes. No type check here.
                 Any(sm, on, If(src));
                 Any(sm, off, IfNot(src));
             }
             if (slot.dropAlias != null) Mirror(cp + "BridgeDrop", slot.dropAlias, p + "Drop", false);
             if (slot.showAlias != null) Mirror(cp + "BridgeShow", slot.showAlias, p + "Show", slot.defaultShown);
+            // Save bridge (persist only): the host's Save param becomes the durable store and this mirror
+            // makes the internal AutoSave follow it, so the Save watcher and LatchFine keep reading a Bool
+            // whatever type the host param ends up as. The bridge is AutoSave's single writer on an aliased
+            // slot (the built-in Save control binds the alias, never AutoSave). defOn keeps a dead bridge's
+            // failure mode "Save stuck on" (annoying) instead of "stuck off" (data loss).
+            if (persist && slot.saveAlias != null) Mirror(cp + "BridgeSave", slot.saveAlias, p + "AutoSave", true);
         }
 
         // ============================ params + menu ============================
 
         static void EmitParams(VRCExpressionParameters prms, Slot[] slots) {
             var list = prms.parameters != null ? prms.parameters.ToList() : new List<VRCExpressionParameters.Parameter>();
-            void Add(string name, VRCExpressionParameters.ValueType vt, bool synced, float def = 0) { if (!list.Any(x => x.name == name)) list.Add(new VRCExpressionParameters.Parameter { name = name, valueType = vt, networkSynced = synced, saved = false, defaultValue = def }); }
+            void Add(string name, VRCExpressionParameters.ValueType vt, bool synced, float def = 0, bool saved = false) { if (!list.Any(x => x.name == name)) list.Add(new VRCExpressionParameters.Parameter { name = name, valueType = vt, networkSynced = synced, saved = saved, defaultValue = def }); }
             void AddSynced(string name, VRCExpressionParameters.ValueType vt, float def = 0) => Add(name, vt, true, def);
             for (int s = 0; s < Lanes; s++) AddSynced(MUX + "Lane" + s, VRCExpressionParameters.ValueType.Int);
             AddSynced(MUX + "Idx", VRCExpressionParameters.ValueType.Int);
@@ -613,22 +854,47 @@ namespace VRCWorldDrop.Synced {
                 // reflects it). The synced default is what a remote/late-joiner reads before the owner's value arrives.
                 AddSynced(P(slot.id) + "Show", VRCExpressionParameters.ValueType.Bool, slot.defaultShown ? 1f : 0f);
                 AddSynced(P(slot.id) + "Live", VRCExpressionParameters.ValueType.Bool);
-                // Author-named drive params are registered LOCAL (not network-synced, so zero synced-bit cost):
-                // the owner's bridge layer copies each onto the synced WDM<slot> param, which propagates to
-                // remotes. The host binds its own menu/FX to these names; Show's local default mirrors
-                // defaultShown so it starts in sync. Drop and Show are independent - either may be set alone.
-                // If the param already exists (the author pointed at one of their own), Add no-ops on it.
-                if (slot.dropAlias != null) Add(slot.dropAlias, VRCExpressionParameters.ValueType.Bool, false);
-                if (slot.showAlias != null) Add(slot.showAlias, VRCExpressionParameters.ValueType.Bool, false, slot.defaultShown ? 1f : 0f);
+                // Author-named drive params are NOT declared here: the host owns them. The build hook runs
+                // before VRCFury and forces each alias global, so the host's own declaration (whatever its
+                // type - bool, int or float) is the single source, and the owner's bridge layer reads it and
+                // copies it onto the synced WDM<slot> param. Declaring a Bool copy in this fresh pre-merge
+                // params asset would double-declare it or clash with the host's type. The alias exists as a
+                // Bool animator param (EnsureBool in EmitController) only so the bridge conditions are valid;
+                // VRCFury coerces those conditions to the merged type. Drop and Show are independent.
+                // Persist: the latched pose channels + the DropSaved flag + the AutoSave preference become saved
+                // LOCAL expression params (VRChat writes them to the wearer's local storage and restores them next
+                // session; zero synced bits). They stay animator params too - being expression params only adds the
+                // persistence. The *F mirrors and Raw* contact reads are transient and stay animator-only.
+                if (slot.persist) {
+                    string pp = P(slot.id);
+                    Add(pp + "DropSaved", VRCExpressionParameters.ValueType.Bool, false, 0, true);
+                    // Sticky Save preference, default on. With a host Save alias the ALIAS is the single
+                    // saved store (the author marks it saved on their own declaration; the BridgeSave
+                    // mirror re-derives AutoSave from it every session), so AutoSave is registered
+                    // unsaved there - two saved copies could disagree at load. The alias itself is never
+                    // declared in these params: it is the host's, whatever type they chose.
+                    Add(pp + "AutoSave", VRCExpressionParameters.ValueType.Bool, false, 1, slot.saveAlias == null);
+                    foreach (var a in Axes) {
+                        Add(pp + "Super" + a, VRCExpressionParameters.ValueType.Int, false, 0, true);
+                        Add(pp + "Cell" + a, VRCExpressionParameters.ValueType.Int, false, 0, true);
+                        Add(pp + "Fine" + a, VRCExpressionParameters.ValueType.Float, false, 0, true);
+                    }
+                    Add(pp + "ForwardX", VRCExpressionParameters.ValueType.Float, false, 0, true);
+                    Add(pp + "ForwardZ", VRCExpressionParameters.ValueType.Float, false, 0, true);
+                    if (slot.fullRot) {
+                        Add(pp + "ForwardY", VRCExpressionParameters.ValueType.Float, false, 0, true);
+                        foreach (var a in Axes) Add(pp + "Up" + a, VRCExpressionParameters.ValueType.Float, false, 0, true);
+                    }
+                }
             }
             prms.parameters = list.ToArray();
             EditorUtility.SetDirty(prms);
         }
 
-        // VRCFury's FinalizeMenuService normalizes every control to non-null parameter + subParameters
-        // (null crashes GestureManager / Av3Emulator / the SDK3->CCK converter; VRChat itself tolerates it).
-        // That pass runs in VRCFury's builder BEFORE this hook, so it never sees the controls we add here -
-        // normalize ours the same way so the tools don't choke on the generated synced menu.
+        // Normalize every control to a non-null parameter + subParameters (null crashes GestureManager /
+        // Av3Emulator / the SDK3->CCK converter; VRChat itself tolerates it). VRCFury's FinalizeMenuService
+        // does the same on the final merged menu after this hook hands the menu over, so this is defensive,
+        // but it keeps the generated submenu assets well-formed on disk regardless.
         static VRCExpressionsMenu.Control Norm(VRCExpressionsMenu.Control c) {
             if (c.parameter == null) c.parameter = new VRCExpressionsMenu.Control.Parameter { name = "" };
             if (c.subParameters == null) c.subParameters = new VRCExpressionsMenu.Control.Parameter[0];
@@ -639,11 +905,12 @@ namespace VRCWorldDrop.Synced {
             if (menu.controls == null) menu.controls = new List<VRCExpressionsMenu.Control>();
             // Each object's Show/Drop toggles go in a submenu at its configured menuPath. "N" in the
             // path is a token for the object number (1-based); blank falls back to the same default.
-            // Build the nested submenu tree, reusing submenus we created for shared path prefixes
-            // so multiple objects can share folders (e.g. all under one "World Drop"), AND merging into
-            // a same-named folder that already exists on the menu (e.g. a "WorldDrops" submenu VRCFury
-            // merged in for the unsynced toggles) instead of creating a duplicate. Every generated
-            // submenu is saved as an asset (VRChat drops in-memory menus on upload).
+            // Build the nested submenu tree, reusing submenus we created for shared path prefixes so
+            // multiple objects can share folders (e.g. all under one "World Drop"). This menu is a fresh
+            // standalone asset handed to VRCFury before its merge; VRCFury merges it into the avatar's menu
+            // at its own pass, folding a same-named folder (e.g. a "WorldDrops" from the unsynced toggles)
+            // into one - so no cross-asset dedup is needed here. Every generated submenu is saved as an
+            // asset (VRChat drops in-memory menus on upload).
             var created = new Dictionary<string, VRCExpressionsMenu>();
             // Submenus are written to disk only AFTER their controls are fully populated (the persist pass
             // at the end), never created-then-mutated. During an avatar build Unity batches asset editing,
@@ -656,19 +923,6 @@ namespace VRCWorldDrop.Synced {
                 string key = keyPrefix.Length == 0 ? name : keyPrefix + "/" + name;
                 if (created.TryGetValue(key, out var existing)) return existing;
                 if (parentMenu.controls == null) parentMenu.controls = new List<VRCExpressionsMenu.Control>();
-                // Merge into an existing same-named submenu (e.g. VRCFury's "WorldDrops") instead of
-                // adding a duplicate folder. Copy-on-write: clone that submenu and repoint the control
-                // at the clone, so we extend our own asset and never mutate VRCFury's (the build hook's
-                // root Instantiate does not clone nested submenu assets). Then treat the clone as ours.
-                var hit = parentMenu.controls.FirstOrDefault(c => c != null && c.type == VRCExpressionsMenu.Control.ControlType.SubMenu && c.name == name);
-                if (hit != null) {
-                    var merged = hit.subMenu != null ? UnityEngine.Object.Instantiate(hit.subMenu) : ScriptableObject.CreateInstance<VRCExpressionsMenu>();
-                    if (merged.controls == null) merged.controls = new List<VRCExpressionsMenu.Control>();
-                    owned.Add(merged);
-                    hit.subMenu = merged;
-                    created[key] = merged;
-                    return merged;
-                }
                 var sub = ScriptableObject.CreateInstance<VRCExpressionsMenu>();
                 sub.controls = new List<VRCExpressionsMenu.Control>();
                 owned.Add(sub);
@@ -695,37 +949,25 @@ namespace VRCWorldDrop.Synced {
                 string dropParam = slot.dropAlias ?? P(slot.id) + "Drop";
                 cur.controls.Add(Norm(new VRCExpressionsMenu.Control { name = "Show", type = VRCExpressionsMenu.Control.ControlType.Toggle, parameter = new VRCExpressionsMenu.Control.Parameter { name = showParam } }));
                 cur.controls.Add(Norm(new VRCExpressionsMenu.Control { name = "Drop", type = VRCExpressionsMenu.Control.ControlType.Toggle, parameter = new VRCExpressionsMenu.Control.Parameter { name = dropParam } }));
+                // Persist: the Save toggle is the sticky preference (bound to AutoSave, default on). ON = a drop
+                // is saved across sessions; toggling OFF sticks (saved), so future drops do not save until
+                // it is turned back on, and it forgets any currently-stored drop. A slot whose Save is host-driven
+                // (a Save Param is set) gets NO built-in Save control: the host drives Save from its own toggle,
+                // exactly as a Drop/Show Param suppresses those built-in controls. This also keeps our menu from
+                // binding the host's param - VRCFury rejects a merged menu that references a parameter declared by
+                // a separate component and not yet merged when it checks our menu. Slots whose Drop/Show is
+                // host-driven skip this whole submenu already.
+                if (slot.persist && slot.saveAlias == null)
+                    cur.controls.Add(Norm(new VRCExpressionsMenu.Control { name = "Save", type = VRCExpressionsMenu.Control.ControlType.Toggle, parameter = new VRCExpressionsMenu.Control.Parameter { name = P(slot.id) + "AutoSave" } }));
             }
-            // Auto-paginate: VRChat shows at most 8 controls per menu and has no native pagination, so any
-            // menu WE own (plus the root) that overflowed gets its tail peeled into a chained "Next" subpage -
-            // the same scheme as VRCFury's MenuSplitter, ported here because VRCFury finalizes and splits the
-            // menu in its main builder (hook -10000) BEFORE this hook (-1025) appends our controls, so it never
-            // re-splits our overflow. Pages are created here, before the persist walk, so they persist as
-            // owned assets (never CreateAsset-then-mutate). Keep 7 originals + a "Next" link per full page.
-            const int maxControls = 8;
-            void Paginate(VRCExpressionsMenu m) {
-                var page = m;
-                while (page.controls.Count > maxControls) {
-                    var next = ScriptableObject.CreateInstance<VRCExpressionsMenu>();
-                    next.controls = new List<VRCExpressionsMenu.Control>();
-                    owned.Add(next);
-                    while (page.controls.Count > maxControls - 1) {
-                        next.controls.Insert(0, page.controls[page.controls.Count - 1]);
-                        page.controls.RemoveAt(page.controls.Count - 1);
-                    }
-                    page.controls.Add(Norm(new VRCExpressionsMenu.Control { name = "Next", type = VRCExpressionsMenu.Control.ControlType.SubMenu, subMenu = next }));
-                    page = next; // a large overflow chains: re-check the new page and spill again
-                }
-            }
-            Paginate(menu);
-            foreach (var f in created.Values.ToList()) Paginate(f);
+            // Pagination is left to VRCFury: it runs MenuSplitter on the final merged menu after this hook
+            // hands the menu over, splitting any folder past VRChat's 8-control limit into chained subpages.
+            // This hook does not paginate the menu itself, so nothing here interferes with that merge/split.
 
             // Persist pass: walk the finished tree depth-first and CreateAsset every submenu WE own, children
             // before parents, so each parent's subMenu reference already points at an on-disk asset when it is
             // serialized. Writing complete assets this way (never CreateAsset-then-mutate) is what survives the
-            // avatar build's batched asset editing, which silently drops post-create mutations. A post-order
-            // walk (not reverse creation order) is required because pagination can move a child-folder control
-            // into a "Next" page, so a parent may reference a submenu created after it.
+            // avatar build's batched asset editing, which silently drops post-create mutations.
             int assetIdx = 0;
             void Persist(VRCExpressionsMenu m) {
                 if (m.controls == null) return;

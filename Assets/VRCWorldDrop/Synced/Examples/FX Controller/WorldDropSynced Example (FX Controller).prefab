@@ -165,13 +165,18 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8779130922154515351, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
         type: 3}
-      propertyPath: menuMode
-      value: 2
+      propertyPath: persist
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 8779130922154515351, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
         type: 3}
       propertyPath: dropParam
       value: FX_Drop
+      objectReference: {fileID: 0}
+    - target: {fileID: 8779130922154515351, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
+        type: 3}
+      propertyPath: saveParam
+      value: FX_Save
       objectReference: {fileID: 0}
     - target: {fileID: 8779130922154515351, guid: 9fa2ab6e84382df4396cc1ce5abc9b69,
         type: 3}
@@ -260,6 +265,7 @@ MonoBehaviour:
         globalParams:
         - FX_Drop
         - FX_Show
+        - FX_Save
         allNonsyncedAreGlobal: 0
         ignoreSaved: 0
         toggleParam: 

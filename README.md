@@ -143,7 +143,8 @@ Optional steps:
 
 6. Rename the prefab to match your object for better organization.
 7. To choose whether the object starts visible in-game, use **Default Shown** in the inspector. To hide it in the Scene view, disable `Container/Item` (not `Container`).
-8. Set the object's lighting **Anchor Override** to itself so it lights with itself and not your avatar.
+8. To keep dropped positions across world rejoins and avatar switches, check **Saved Across Sessions** in the inspector. See [Saved Across Sessions](#saved-across-sessions) for more detail on how this works.
+9. Set the object's lighting **Anchor Override** to itself so it lights with itself and not your avatar.
 
 ### Settings
 
@@ -154,13 +155,25 @@ For optional settings, drag a **`WorldDropSynced Settings`** object onto your av
 
 ![WorldDropSynced Settings](Doc/WorldDropSync_Settings.jpg)
 
+### Saved Across Sessions
+
+**Saved Across Sessions** saves a dropped object's position across world rejoins and avatar switches. The object's world coordinates are stored in local saved parameters, so this costs **no extra synced parameters** (the object is still synced for remote players).
+
+- A third **Save** toggle appears next to Show/Drop, on by default. Turn it off to stop saving.
+- Saved world coordinates only make sense in the world you dropped the object in. If you join a different world, turn **Drop** off before showing it or it may appear somewhere totally unexpected.
+   - Note that after loading in, it takes a few seconds for the **Drop** toggle to turn on for a saved, dropped object.
+
 ### Custom Menu Toggles
 
 To use your own menu toggles instead of the built-in Show/Drop ones (e.g. to integrate with your own asset):
 
 1. On the **World Drop Synced** component, expand **Use your own menu**.
-2. Set **Drop Param** / **Show Param** to your own avatar bool parameters. Setting either hides the built-in menu.
+2. Set **Drop Param** / **Show Param** to your own avatar parameters. Setting either hides the built-in menu, so a Show Param needs a Drop Param too. Bool, float and int parameters all work.
 3. Make those parameters **local**. The drops are synced internally.
+4. With [Saved Across Sessions](#saved-across-sessions) on, optionally set the **Save Param** to drive its Save preference from your own menu. That parameter must be **saved**.
+
+> [!NOTE]
+> If using VRCFury for your toggles, make sure the parameters are marked as global parameters.
 
 See the [VRCFury toggles example](Assets/VRCWorldDrop/Synced/Examples/VRCFury%20Toggles) and the [FX controller example](Assets/VRCWorldDrop/Synced/Examples/FX%20Controller).
 

@@ -1,8 +1,10 @@
 # Package Exporter
 
-Builds `VRCWorldDrop` `.unitypackage` files straight from disk, without opening the
+Builds this repo's `.unitypackage` files straight from disk, without opening the
 Unity Editor. Used both for local testing and by the release workflow
-([.github/workflows/release.yml](../../.github/workflows/release.yml)).
+([.github/workflows/release.yml](../../.github/workflows/release.yml)). The
+package is configured in `PACKAGES` in [export.mjs](export.mjs): **worlddrop**
+(`VRCWorldDrop`, the default).
 
 A `.unitypackage` is just a gzipped tar where every asset lives in a folder named
 after its GUID, holding `asset` (the file), `asset.meta` (its `.meta`), and
@@ -26,13 +28,14 @@ Output `.unitypackage` and `.zip` files land in the repo root (gitignored).
 
 ## What it does
 
-- **Source:** `Assets/VRCWorldDrop/` only. Sibling `Assets/VRCWorldDrop_Dev/` and
-  `_Experimental/` folders are never included (out of scope by path).
-- **Excludes:** `Synced/_Temp/` (build-time scratch regenerated every build by
-  `WdsBuildHook`). Adjust the `EXCLUDE` list in [export.mjs](export.mjs).
-- **Version:** read from the VPM manifest at `Assets/VRCWorldDrop/package.json`
-  (the single source of truth). The repo-root `package.json` is the npm tooling
-  manifest, not the shipped one.
+- **Source:** the package folder only (`Assets/VRCWorldDrop/`). Nothing outside
+  that folder is included.
+- **Excludes:** the `exclude` list in [export.mjs](export.mjs). VRCWorldDrop
+  drops only `Synced/_Temp/` (build-time scratch regenerated every build by
+  `WdsBuildHook`).
+- **Version:** read from the VPM manifest inside the package folder
+  (`Assets/VRCWorldDrop/package.json`, the single source of truth). The repo-root
+  `package.json` is the npm tooling manifest, not the shipped one.
 
 ### Two layouts
 
