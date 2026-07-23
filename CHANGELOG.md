@@ -1,3 +1,7 @@
+# 1.4.1
+
+- Fix synced world drops showing in the wrong position when you re-drop an object while other players have your avatar culled (thanks to Wolfy527 for reporting).
+
 # 1.4.0
 
 - Add **Saved Across Sessions** for synced world drops to save dropped positions across world rejoins and avatar switches.

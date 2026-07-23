@@ -352,7 +352,7 @@ namespace VRCWorldDrop.Synced {
             var added = new HashSet<string>();
 
             // shared params
-            EnsureBool(ctrl, "IsLocal"); EnsureFloat(ctrl, MUX + "One", 1f);
+            EnsureBool(ctrl, "IsLocal"); EnsureBool(ctrl, "IsAnimatorEnabled", true); EnsureFloat(ctrl, MUX + "One", 1f);
             for (int s = 0; s < Lanes; s++) EnsureInt(ctrl, MUX + "Lane" + s);   // declare every lane the width uses
             EnsureInt(ctrl, MUX + "Idx"); EnsureBool(ctrl, MUX + "AnyDrop");
             foreach (var slot in slots) {
@@ -393,6 +393,33 @@ namespace VRCWorldDrop.Synced {
             }
 
             for (int si = 0; si < n; si++) { SlotLayers(ctrl, slots[si], n, cl[si], added); }
+
+            // Re-sync after an animator un-cull (remote only). VRChat sets IsAnimatorEnabled false on the
+            // last frame it evaluates before disabling a hidden avatar's animator, and true once it
+            // re-enables. Arming is a plain state TRANSITION on that final frame: a transition commits
+            // within the frame it fires, while a parameter-driver write can be applied after evaluation
+            // and is lost when no evaluated frame follows. So the reset itself runs on the first
+            // re-enabled frame instead, when evaluation is guaranteed to continue and the write always
+            // lands. It clears each slot's Seen AND Frozen: Seen < steps re-arms the reveal, and clearing
+            // Frozen re-enables the Decode and lets the Display re-capture. Frozen must be cleared here,
+            // not left to the RemoteIdle cascade: after a redrop while this client was paused, RemoteIdle
+            // does not re-fire, so a still-latched Frozen would gate the decode off and pin the object to
+            // its rest pose. The object then re-reveals from the live broadcast, re-converging on whatever
+            // pose was dropped while this client had the animator paused. The cost is a hidden re-reveal
+            // (a few seconds) after every un-cull, drop moved or not. A client that predates
+            // IsAnimatorEnabled never sees it false (declared default true) and keeps the old behavior.
+            ctrl.AddLayer("WDM_UncullResync"); added.Add("WDM_UncullResync");
+            {
+                var sm = ctrl.layers[ctrl.layers.Length - 1].stateMachine;
+                var noop = St(sm, "NoOp", cl[0].Buffer1F, new Vector3(200, 0, 0));
+                var armed = St(sm, "Armed", cl[0].Buffer1F, new Vector3(200, 100, 0));
+                var reset = St(sm, "Reset", cl[0].Buffer1F, new Vector3(200, 200, 0));
+                sm.defaultState = noop;
+                AddDriver(ctrl, reset, false, slots.SelectMany(s => new[] { Set(P(s.id) + "Seen", 0), Set(P(s.id) + "Frozen", 0) }).ToArray());
+                Cond(noop.AddTransition(armed), IfNot("IsLocal"), IfNot("IsAnimatorEnabled"));
+                Cond(armed.AddTransition(reset), If("IsAnimatorEnabled"));
+                ExitT(reset, noop);
+            }
 
             var layers = ctrl.layers;
             for (int k = 0; k < layers.Length; k++) if (added.Contains(layers[k].name)) layers[k].defaultWeight = 1f;

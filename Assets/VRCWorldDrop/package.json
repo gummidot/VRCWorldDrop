@@ -1,7 +1,7 @@
 {
   "name": "com.gummidot.vrc-world-drop",
   "displayName": "VRCWorldDrop",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "unity": "2022.3",
   "description": "World drop toggle for VRChat avatars. Drag-n-drop installation with VRCFury. Quest compatible!",
   "vpmDependencies": {
